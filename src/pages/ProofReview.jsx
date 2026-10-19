@@ -123,6 +123,6 @@ function Shell({ children }) {
 
 const styles = {
   note: { background: 'var(--card2)', borderRadius: 12, padding: 14, marginTop: 14, fontSize: 14, lineHeight: 1.6 },
-  img: { width: '100%', borderRadius: 10, display: 'block', cursor: 'zoom-in', background: 'repeating-conic-gradient(#f3f0f5 0% 25%, #fff 0% 50%) 50% / 20px 20px' },
+  img: { width: '100%', borderRadius: 10, display: 'block', cursor: 'zoom-in', background: 'repeating-conic-gradient(#fbeff2 0% 25%, #fff 0% 50%) 50% / 20px 20px' },
   zoom: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, cursor: 'zoom-out' },
 }

@@ -45,7 +45,7 @@ export default async function handler(req, res) {
       body: (approved
         ? `<p><strong>${esc(name)}</strong> approved the proof for ${esc(order.product_type)}. You're clear to start production.</p>`
         : `<p style="margin:0 0 12px;"><strong>${esc(name)}</strong> requested changes:</p>
-           <div style="background:#f8f6f4;border-left:3px solid ${COLORS.accent};border-radius:0 8px 8px 0;padding:14px 16px;">${escBr(revisionNote)}</div>`)
+           <div style="background:${COLORS.card2};border-left:3px solid ${COLORS.primary};border-radius:0 8px 8px 0;padding:14px 16px;">${escBr(revisionNote)}</div>`)
         + button('Open order →', `${APP_URL}/dashboard/order/${order.id}`),
     })),
   ])

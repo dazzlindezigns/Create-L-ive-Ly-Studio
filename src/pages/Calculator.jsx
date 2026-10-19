@@ -127,7 +127,7 @@ export default function Calculator() {
         <section style={ui.card} className="no-print">
           <h2 style={ui.h2}>✨ AI estimate</h2>
           <TextArea rows={3} value={description} onChange={e => setDescription(e.target.value)}
-            placeholder='e.g. "200 holographic 3in die-cut stickers of a logo, individually sleeved" or "sticker bar for 60 guests at a baby shower"' />
+            placeholder='e.g. "12 personalized 3D printed keychains with names" or "24 custom 15oz mugs with a logo for a vendor event"' />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
             {images.map((img, i) => (
               <div key={i} style={{ position: 'relative' }}>
@@ -198,7 +198,7 @@ export default function Calculator() {
         <section style={ui.card} className="no-print">
           <h2 style={ui.h2}>Quote / invoice</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="Title"><Input value={cust.title} onChange={e => setCust({ ...cust, title: e.target.value })} placeholder="e.g. Logo stickers for Bloom Bakery" /></Field>
+            <Field label="Title"><Input value={cust.title} onChange={e => setCust({ ...cust, title: e.target.value })} placeholder="e.g. Custom mugs for Bloom Bakery" /></Field>
             <Field label="Customer name"><Input value={cust.name} onChange={e => setCust({ ...cust, name: e.target.value })} /></Field>
             <div style={ui.row}>
               <Field label="Email"><Input type="email" value={cust.email} onChange={e => setCust({ ...cust, email: e.target.value })} /></Field>
@@ -233,8 +233,8 @@ function PrintInvoice({ cust, lines, total }) {
       <style>{'@media print { .print-only { display: block !important; } }'}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
-          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 800 }}>{BRAND.name}</div>
-          <div style={{ color: '#777', fontSize: 13 }}>{BRAND.location}</div>
+          <img src={BRAND.logo} alt={BRAND.name} style={{ width: 200, height: 'auto', display: 'block' }} />
+          <div style={{ color: '#777', fontSize: 12, marginTop: 6 }}>{BRAND.website.replace(/^https?:\/\//, '')}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 22, fontWeight: 800 }}>INVOICE</div>

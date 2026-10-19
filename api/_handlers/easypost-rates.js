@@ -19,9 +19,9 @@ export default async function handler(req, res) {
       to_address: { country: 'US', ...to_address },
       parcel: {
         weight: parseFloat(parcel.weight),               // ounces
-        length: parseFloat(parcel.length) || 9,
+        length: parseFloat(parcel.length) || 8,
         width: parseFloat(parcel.width) || 6,
-        height: parseFloat(parcel.height) || 0.5,        // sticker mailers are flat
+        height: parseFloat(parcel.height) || 4,
       },
     },
   })

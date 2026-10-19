@@ -10,11 +10,11 @@ export const ui = {
   wrap: { maxWidth: 720, margin: '0 auto', padding: '20px 16px' },
   card: {
     background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 18,
-    padding: 20, boxShadow: '0 2px 14px rgba(43,34,51,0.05)',
+    padding: 20, boxShadow: '0 2px 14px rgba(148,82,103,0.07)',
   },
-  h1: { fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15 },
-  h2: { fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 12 },
-  eyebrow: { fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.08em' },
+  h1: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 30, fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1.15 },
+  h2: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 21, fontWeight: 600, letterSpacing: '-0.01em', marginBottom: 12 },
+  eyebrow: { fontSize: 11, fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.08em' },
   label: { fontSize: 13, fontWeight: 600, color: 'var(--dark)', display: 'block', marginBottom: 6 },
   hint: { fontSize: 12, color: 'var(--muted)', marginTop: 4 },
   input: {
@@ -116,10 +116,11 @@ export function Loading({ text = 'Loading…' }) {
 // Customer-facing header with the business name.
 export function BrandHeader({ subtitle }) {
   return (
-    <header style={{ textAlign: 'center', padding: '32px 16px 8px' }}>
-      <img src="/icon.svg" alt="" width={56} height={56} style={{ borderRadius: 14, marginBottom: 10 }} />
-      <div style={{ fontFamily: "'Fraunces', serif", fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em' }}>{BRAND.name}</div>
-      {subtitle && <div style={{ ...ui.muted, marginTop: 4 }}>{subtitle}</div>}
+    <header style={{ textAlign: 'center', padding: '28px 16px 8px' }}>
+      <a href={BRAND.website} aria-label={BRAND.name}>
+        <img src={BRAND.logo} alt={BRAND.name} width={210} style={{ width: 210, maxWidth: '62vw', height: 'auto', display: 'block', margin: '0 auto' }} />
+      </a>
+      {subtitle && <div style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginTop: 12 }}>{subtitle}</div>}
     </header>
   )
 }

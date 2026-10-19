@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (!items.length) throw new HttpError(400, 'Upload at least one proof first')
 
   const imagesHtml = items.map(item => {
-    const label = item.label ? `<p style="font-size:11px;font-weight:700;color:${COLORS.accent};text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px;">${esc(item.label)}</p>` : ''
+    const label = item.label ? `<p style="font-size:11px;font-weight:700;color:${COLORS.primary};text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px;">${esc(item.label)}</p>` : ''
     if (/\.pdf($|\?)/i.test(item.url)) {
       return `<div style="margin-bottom:18px;">${label}<a href="${esc(item.url)}" style="color:${COLORS.secondary};font-weight:700;">Open PDF proof ↗</a></div>`
     }

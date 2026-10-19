@@ -1,18 +1,19 @@
 /* Fallback theme tokens — the live values are set from src/brand.js in main.jsx. */
 :root {
-  --primary: #FF4F8B;
-  --secondary: #14B8A6;
-  --accent: #7C5CFF;
-  --bg: #FFF8F3;
+  --primary: #C96E88;
+  --secondary: #A94F6B;
+  --accent: #EFA2B3;
+  --plum: #8C6A8F;
+  --bg: #FFFAF9;
   --card: #FFFFFF;
-  --card2: #FFF1E8;
-  --dark: #2B2233;
-  --mid: rgba(43,34,51,0.72);
-  --muted: rgba(43,34,51,0.45);
-  --border: rgba(43,34,51,0.10);
-  --success: #16A34A;
-  --warning: #D97706;
-  --danger: #DC2626;
+  --card2: #FFF1F3;
+  --dark: #352C30;
+  --mid: rgba(53,44,48,0.78);
+  --muted: #786C71;
+  --border: rgba(201,110,136,0.20);
+  --success: #2F9E62;
+  --warning: #C7802B;
+  --danger: #C8414B;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -20,7 +21,11 @@
 html { scroll-behavior: smooth; }
 
 body {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-image:
+    radial-gradient(900px 500px at 10% 0%, rgba(239,162,179,0.20), transparent 65%),
+    radial-gradient(900px 500px at 90% 0%, rgba(255,225,232,0.45), transparent 65%);
+  background-repeat: no-repeat;
+  font-family: 'Montserrat', Arial, sans-serif;
   background: var(--bg);
   color: var(--dark);
   -webkit-font-smoothing: antialiased;

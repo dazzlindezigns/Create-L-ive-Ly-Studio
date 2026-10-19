@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, uploadFile } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { BRAND, BULK_TIERS, getBulkTier } from '../brand'
+import { BRAND, BULK_TIERS, COLLECTIONS, getBulkTier } from '../brand'
 import { ui, Button, Field, Input, TextArea, Select, Loading, BrandHeader, Modal } from '../components/ui'
 
 const CART_KEY = 'shop-cart-v1'
@@ -33,9 +33,21 @@ export default function ShopProducts() {
   })
   const count = lines.reduce((s, l) => s + l.quantity, 0)
   const selected = params.get('p') ? byId[params.get('p')] : null
-  const [kindFilter, setKindFilter] = useState('all')
-  const hasBothKinds = (products || []).some(p => p.kind === 'digital') && (products || []).some(p => p.kind !== 'digital')
-  const shown = (products || []).filter(p => kindFilter === 'all' || (kindFilter === 'digital') === (p.kind === 'digital'))
+  // Filters live in the URL (?c=labs, ?c=digital) so collection links can be shared like her Payhip ones.
+  const filter = params.get('c') || 'all'
+  const setParam = (key, value) => setParams(prev => {
+    const next = new URLSearchParams(prev)
+    if (value) next.set(key, value); else next.delete(key)
+    return next
+  })
+  const all = products || []
+  const filters = [
+    { key: 'all', label: 'All products' },
+    ...COLLECTIONS.filter(c => all.some(p => p.collection === c.key)).map(c => ({ key: c.key, label: c.name, blurb: c.blurb })),
+    ...(all.some(p => p.kind === 'digital') ? [{ key: 'digital', label: '⬇️ Digital downloads' }] : []),
+  ]
+  const active = filters.find(f => f.key === filter) || filters[0]
+  const shown = all.filter(p => active.key === 'all' || (active.key === 'digital' ? p.kind === 'digital' : p.collection === active.key))
 
   const add = (product, option, quantity) => {
     const digital = product.kind === 'digital'
@@ -44,7 +56,7 @@ export default function ShopProducts() {
     setCart(prev => prev.some(c => c.key === key)
       ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity } : c)
       : [...prev, { key, productId: product.id, option: digital ? null : option, quantity: digital ? 1 : quantity }])
-    setParams({})
+    setParam('p', null)
     setCartOpen(true)
   }
 
@@ -53,7 +65,7 @@ export default function ShopProducts() {
 
   return (
     <div style={{ ...ui.page, paddingBottom: 110 }}>
-      <BrandHeader subtitle="Shop ready-to-order favorites" />
+      <BrandHeader subtitle={BRAND.subTagline} />
       <div style={{ ...ui.wrap, maxWidth: 960 }}>
         {!shopOpen && (
           <div style={{ ...ui.card, background: 'var(--card2)', textAlign: 'center', marginBottom: 16 }}>
@@ -62,23 +74,24 @@ export default function ShopProducts() {
           </div>
         )}
         <div style={styles.bulkStrip}>
-          💚 Bulk savings: {BULK_TIERS.slice().reverse().map(t => `${t.min}+ = ${t.badge}`).join(' · ')}
+          ♡ Bulk savings: {BULK_TIERS.slice().reverse().map(t => `${t.min}+ = ${t.badge}`).join(' · ')}
         </div>
 
         {products.length === 0 ? (
           <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)' }}>No products yet — check back soon!</div>
         ) : (
           <>
-          {hasBothKinds && (
+          {filters.length > 1 && (
             <div style={styles.filters}>
-              {[['all', 'All'], ['physical', '📦 Physical'], ['digital', '⬇️ Digital downloads']].map(([k, label]) => (
-                <button key={k} onClick={() => setKindFilter(k)} style={{ ...styles.filter, ...(kindFilter === k ? styles.filterOn : {}) }}>{label}</button>
+              {filters.map(f => (
+                <button key={f.key} onClick={() => setParam('c', f.key === 'all' ? null : f.key)} style={{ ...styles.filter, ...(active.key === f.key ? styles.filterOn : {}) }}>{f.label}</button>
               ))}
             </div>
           )}
+          {active.blurb && <p style={{ ...ui.muted, textAlign: 'center', margin: '-4px 0 14px' }}>{active.blurb}</p>}
           <div style={styles.grid}>
             {shown.map(p => (
-              <button key={p.id} onClick={() => setParams({ p: p.id })} style={styles.tile}>
+              <button key={p.id} onClick={() => setParam('p', p.id)} style={styles.tile}>
                 <div style={{ ...styles.imgWrap, position: 'relative' }}>
                   {p.image_urls?.[0] ? <img src={p.image_urls[0]} alt={p.name} style={styles.img} /> : <div style={styles.noImg}>{p.kind === 'digital' ? '⬇️' : '✨'}</div>}
                   {p.kind === 'digital' && <span style={styles.digitalTag}>Digital</span>}
@@ -104,7 +117,7 @@ export default function ShopProducts() {
         </button>
       )}
 
-      {selected && <ProductModal product={selected} cartQty={count} onClose={() => setParams({})} onAdd={add} disabled={!shopOpen} />}
+      {selected && <ProductModal product={selected} cartQty={count} onClose={() => setParam('p', null)} onAdd={add} disabled={!shopOpen} />}
       {cartOpen && <CartModal lines={lines} settings={settings} shopOpen={shopOpen} onClose={() => setCartOpen(false)}
         setQty={(key, q) => setCart(prev => q <= 0 ? prev.filter(c => c.key !== key) : prev.map(c => c.key === key ? { ...c, quantity: q } : c))}
         onCheckedOut={() => setCart([])} />}
@@ -331,9 +344,9 @@ function CartModal({ lines, settings, shopOpen, onClose, setQty, onCheckedOut })
 const Line = ({ k, v, green }) => <div style={{ ...styles.line, color: green ? 'var(--success)' : undefined }}><span>{k}</span><span>{v}</span></div>
 
 const styles = {
-  bulkStrip: { textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--success)', background: 'rgba(22,163,74,0.07)', borderRadius: 50, padding: '8px 14px', marginBottom: 16 },
+  bulkStrip: { textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--secondary)', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 50, padding: '8px 14px', marginBottom: 16 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 },
-  tile: { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit' },
+  tile: { display: 'flex', flexDirection: 'column', alignItems: 'stretch', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit' },
   imgWrap: { aspectRatio: '1', background: 'var(--card2)' },
   img: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
   noImg: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34 },
@@ -349,7 +362,7 @@ const styles = {
   filters: { display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 14 },
   filter: { padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   filterOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
-  digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--accent)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
+  digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--primary)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
   digitalNote: { background: 'var(--card2)', borderRadius: 12, padding: '12px 14px', fontSize: 14, marginTop: 12 },
   qtyBtn: { width: 28, height: 28, borderRadius: '50%', border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 },
   line: { display: 'flex', justifyContent: 'space-between', padding: '3px 0' },

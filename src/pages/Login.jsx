@@ -29,8 +29,7 @@ export default function Login() {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <img src="/icon.svg" alt="" width={52} height={52} style={{ borderRadius: 14, marginBottom: 12 }} />
-          <div style={styles.logo}>{BRAND.name}</div>
+          <img src={BRAND.logo} alt={BRAND.name} width={200} style={{ width: 200, maxWidth: '70%', height: 'auto', display: 'block', margin: '0 auto 14px' }} />
           <h1 style={styles.title}>Maker dashboard</h1>
           <p style={styles.sub}>Sign in to manage your orders</p>
         </div>
@@ -51,10 +50,9 @@ export default function Login() {
 
 const styles = {
   page: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { background: 'var(--card)', borderRadius: 22, width: '100%', maxWidth: 400, overflow: 'hidden', boxShadow: '0 4px 24px rgba(43,34,51,0.08)' },
-  header: { background: 'var(--dark)', padding: '30px 28px', textAlign: 'center' },
-  logo: { fontFamily: "'Fraunces', serif", fontSize: 16, color: 'var(--primary)', fontWeight: 700, marginBottom: 8 },
-  title: { fontFamily: "'Fraunces', serif", fontSize: 26, color: '#fff', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 6 },
-  sub: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
+  card: { background: 'var(--card)', borderRadius: 22, width: '100%', maxWidth: 400, overflow: 'hidden', boxShadow: '0 4px 24px rgba(148,82,103,0.10)' },
+  header: { background: 'var(--card2)', padding: '28px 28px 24px', textAlign: 'center', borderBottom: '1px solid var(--border)' },
+  title: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 24, color: 'var(--dark)', fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 6 },
+  sub: { fontSize: 13, color: 'var(--muted)' },
   form: { padding: 28, display: 'flex', flexDirection: 'column', gap: 16 },
 }

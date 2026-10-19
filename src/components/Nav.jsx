@@ -44,7 +44,7 @@ export default function Nav({ back, backLabel }) {
   const isActive = (path) => path === '/dashboard' ? location.pathname === '/dashboard' : location.pathname === path
   const tab = ({ path, label, Icon }) => {
     const active = isActive(path)
-    const color = active ? 'var(--primary)' : '#9a93a0'
+    const color = active ? 'var(--primary)' : '#A8999F'
     return (
       <button key={path} style={s.tab} onClick={() => navigate(path)}>
         <Icon color={color} />
@@ -85,7 +85,7 @@ const s = {
   fab: {
     flexShrink: 0, width: 54, height: 54, borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent), var(--primary))',
     border: '3px solid var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 4px 18px rgba(124,92,255,0.4)', alignSelf: 'center', marginTop: -22, marginBottom: 10,
+    boxShadow: '0 4px 18px rgba(201,110,136,0.45)', alignSelf: 'center', marginTop: -22, marginBottom: 10,
   },
   fabPlus: { fontSize: 28, color: '#fff', fontWeight: 300, lineHeight: 1, marginTop: -2 },
 }

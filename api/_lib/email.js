@@ -1,5 +1,5 @@
 import { BRAND, COLORS } from '../../src/brand.js'
-import { MAKER_EMAIL } from './core.js'
+import { MAKER_EMAIL, APP_URL } from './core.js'
 
 // Resend needs a verified sending domain. Set EMAIL_FROM once the domain is verified,
 // e.g. "[HER BUSINESS NAME] <orders@herdomain.com>".
@@ -56,23 +56,23 @@ export function rows(pairs) {
 }
 
 export function panel(title, inner) {
-  return `<div style="background:#f8f6f4;border-radius:10px;padding:16px;margin:18px 0;">
-    ${title ? `<p style="font-size:11px;font-weight:700;color:${COLORS.accent};text-transform:uppercase;letter-spacing:0.08em;margin:0 0 10px;">${esc(title)}</p>` : ''}
+  return `<div style="background:${COLORS.card2};border-radius:10px;padding:16px;margin:18px 0;">
+    ${title ? `<p style="font-size:11px;font-weight:700;color:${COLORS.primary};text-transform:uppercase;letter-spacing:0.08em;margin:0 0 10px;">${esc(title)}</p>` : ''}
     ${inner}
   </div>`
 }
 
-// Shared branded layout for every email.
+// Shared branded layout for every email — her logo on the soft pink from her storefront.
 export function layout({ heading, body, footer = true }) {
   return `
-  <div style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;">
-    <div style="background:${COLORS.dark};padding:28px 24px;border-radius:12px 12px 0 0;text-align:center;">
-      <p style="color:rgba(255,255,255,0.5);margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">${esc(BRAND.name)}</p>
-      <h1 style="color:${COLORS.primary};margin:0;font-size:24px;font-weight:800;letter-spacing:-0.02em;">${esc(heading)}</h1>
+  <div style="font-family:Montserrat,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;background:${COLORS.bg};">
+    <div style="background:${COLORS.card2};padding:26px 24px 22px;border-radius:16px 16px 0 0;text-align:center;border:1px solid ${COLORS.border};border-bottom:none;">
+      <img src="${APP_URL}${BRAND.logo}" alt="${esc(BRAND.name)}" width="190" style="width:190px;max-width:70%;height:auto;display:block;margin:0 auto 14px;" />
+      <h1 style="font-family:'Playfair Display',Georgia,serif;color:${COLORS.dark};margin:0;font-size:25px;font-weight:600;">${esc(heading)}</h1>
     </div>
-    <div style="background:#fff;padding:26px 24px;border:1px solid #f0f0f0;border-top:none;border-radius:0 0 12px 12px;font-size:15px;color:${COLORS.dark};line-height:1.7;">
+    <div style="background:#fff;padding:26px 24px;border:1px solid ${COLORS.border};border-top:none;border-radius:0 0 16px 16px;font-size:15px;color:${COLORS.dark};line-height:1.7;">
       ${body}
     </div>
-    ${footer ? `<p style="text-align:center;font-size:11px;color:#bbb;margin-top:16px;">${esc(BRAND.name)} · ${esc(BRAND.location)}</p>` : ''}
+    ${footer ? `<p style="text-align:center;font-size:11px;color:${COLORS.muted};margin-top:16px;letter-spacing:0.08em;text-transform:uppercase;">${esc(BRAND.name)} · <a href="${esc(BRAND.website)}" style="color:${COLORS.muted};">${esc(BRAND.website.replace(/^https?:\/\//, ''))}</a></p>` : ''}
   </div>`
 }

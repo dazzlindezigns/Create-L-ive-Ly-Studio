@@ -137,6 +137,7 @@ create table if not exists products (
   price                 numeric not null,
   image_urls            text[],
   kind                  text not null default 'physical', -- 'physical' | 'digital'
+  collection            text,                         -- key from COLLECTIONS in src/brand.js (labs, paper-studio, vendors, elevate)
   options               text[],                       -- e.g. sizes / finishes the customer picks from (physical only)
   digital_file_path     text,                         -- path in the PRIVATE digital-products bucket (never sent to the browser)
   digital_file_name     text,                         -- original filename shown to buyers

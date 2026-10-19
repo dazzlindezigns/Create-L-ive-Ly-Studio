@@ -18,7 +18,7 @@ export default function ShipModal({ order, onClose, onDone }) {
     name: a.name || order.customer_name, street1: a.street || '', street2: a.street2 || '',
     city: a.city || '', state: a.state || '', zip: a.zip || '',
   })
-  const [parcel, setParcel] = useState({ weight: 3, length: 9, width: 6, height: 0.5 })
+  const [parcel, setParcel] = useState({ weight: 16, length: 8, width: 6, height: 4 })
   const [rates, setRates] = useState([])
   const [shipmentId, setShipmentId] = useState(null)
   const [label, setLabel] = useState(null)

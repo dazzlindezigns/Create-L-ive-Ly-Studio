@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BRAND, PRODUCT_TYPES, STICKER_SIZES, FINISHES } from '../brand'
+import { BRAND, PRODUCT_TYPES } from '../brand'
 import { api, uploadFile } from '../lib/api'
 import { ui, Button, Field, Input, TextArea, Select, BrandHeader, Spinner } from '../components/ui'
 
 const BLANK = {
-  productType: '', quantity: 50, size: STICKER_SIZES[1], customSize: '', finish: FINISHES[0],
+  productType: '', quantity: 1, size: '', finish: '',
   description: '', needBy: '', fulfillment: 'pickup',
   street: '', street2: '', city: '', state: '', zip: '',
   customerName: '', customerEmail: '', customerPhone: '', notes: '',
@@ -21,7 +21,6 @@ export default function OrderForm() {
   const [doneId, setDoneId] = useState(null)
 
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
-  const isEvent = f.productType === 'Sticker bar event'
   const uploading = files.some(x => x.status === 'uploading')
 
   const onFiles = async (e) => {
@@ -57,12 +56,12 @@ export default function OrderForm() {
           customerPhone: f.customerPhone,
           productType: f.productType,
           quantity: f.quantity,
-          size: isEvent ? null : (f.size === 'Custom size' ? `Custom: ${f.customSize}` : f.size),
-          finish: isEvent ? null : f.finish,
+          size: f.size,
+          finish: f.finish,
           description: f.description,
           needBy: f.needBy,
           notes: f.notes,
-          fulfillment: isEvent ? 'pickup' : f.fulfillment,
+          fulfillment: f.fulfillment,
           shippingAddress: { street: f.street, street2: f.street2, city: f.city, state: f.state, zip: f.zip },
           imageUrls: files.filter(x => x.status === 'done').map(x => x.url),
         },
@@ -99,13 +98,13 @@ export default function OrderForm() {
 
   return (
     <div style={ui.page}>
-      <BrandHeader subtitle={BRAND.tagline} />
+      <BrandHeader subtitle={BRAND.subTagline} />
       <form onSubmit={submit} style={{ ...ui.wrap, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ textAlign: 'center', marginBottom: 4 }}>
-          <h1 style={ui.h1}>Request a custom order</h1>
-          <p style={{ ...ui.muted, marginTop: 6 }}>
-            Tell us what you're dreaming up — we'll send a quote. Looking for ready-made items?{' '}
-            <Link to="/shop/products">Visit the shop</Link>.
+          <h1 style={ui.h1}>Custom creations made <span style={{ color: 'var(--primary)' }}>with purpose.</span></h1>
+          <p style={{ ...ui.muted, marginTop: 8, lineHeight: 1.7 }}>
+            Tell us what you're dreaming up and we'll send a personalized quote. Looking for something ready-made?{' '}
+            <Link to="/shop/products">Shop the collections</Link>.
           </p>
         </div>
 
@@ -122,28 +121,19 @@ export default function OrderForm() {
           </div>
 
           <div style={{ ...ui.row, marginTop: 16 }}>
-            <Field label={isEvent ? 'Expected guests' : 'Quantity'}>
+            <Field label="Quantity" style={{ maxWidth: 130 }}>
               <Input type="number" min={1} inputMode="numeric" value={f.quantity} onChange={set('quantity')} required />
             </Field>
-            {!isEvent && (
-              <Field label="Size">
-                <Select value={f.size} onChange={set('size')} options={STICKER_SIZES} />
-              </Field>
-            )}
-            {!isEvent && (
-              <Field label="Finish">
-                <Select value={f.finish} onChange={set('finish')} options={FINISHES} />
-              </Field>
-            )}
-          </div>
-          {!isEvent && f.size === 'Custom size' && (
-            <Field label="Custom size" style={{ marginTop: 12 }}>
-              <Input placeholder='e.g. 2.5" × 4"' value={f.customSize} onChange={set('customSize')} required />
+            <Field label="Size or dimensions (optional)">
+              <Input placeholder='e.g. 11 oz mug, adult L, 4" tall' value={f.size} onChange={set('size')} />
             </Field>
-          )}
+          </div>
+          <Field label="Colors, material or finish (optional)" style={{ marginTop: 12 }}>
+            <Input placeholder="e.g. blush pink & gold, matte, PLA silk" value={f.finish} onChange={set('finish')} />
+          </Field>
 
-          <Field label={isEvent ? 'Tell us about your event' : 'Describe your design'} style={{ marginTop: 12 }}
-            hint={isEvent ? 'Date, location, theme, audience, and the vibe you want.' : 'Colors, text, shape, where you will use them — anything that helps.'}>
+          <Field label="Describe what you'd like" style={{ marginTop: 12 }}
+            hint="Names, dates, text, colors, the occasion, who it's for — anything that helps us bring it to life.">
             <TextArea value={f.description} onChange={set('description')} required />
           </Field>
         </section>
@@ -151,7 +141,7 @@ export default function OrderForm() {
         <section style={ui.card}>
           <div style={ui.eyebrow}>Step 2</div>
           <h2 style={ui.h2}>Artwork & files</h2>
-          <p style={{ ...ui.muted, marginBottom: 12 }}>Logos, photos, sketches, inspiration. PNG, JPG, PDF, SVG, AI, EPS, PSD or ZIP — up to {MAX_FILE_MB} MB each.</p>
+          <p style={{ ...ui.muted, marginBottom: 12 }}>Logos, photos, names, sketches, inspiration pics. PNG, JPG, PDF, SVG, AI, EPS, PSD or ZIP — up to {MAX_FILE_MB} MB each.</p>
           <label style={styles.drop}>
             <input type="file" multiple onChange={onFiles} style={{ display: 'none' }}
               accept="image/*,.pdf,.svg,.ai,.eps,.psd,.zip" />
@@ -178,12 +168,11 @@ export default function OrderForm() {
         <section style={ui.card}>
           <div style={ui.eyebrow}>Step 3</div>
           <h2 style={ui.h2}>Timing & delivery</h2>
-          <Field label={isEvent ? 'Event date' : 'Need it by (optional)'}>
-            <Input type="date" min={minDate} value={f.needBy} onChange={set('needBy')} required={isEvent} />
+          <Field label="Need it by (optional)" hint="Have an event or gift date? Let us know so we can plan around it.">
+            <Input type="date" min={minDate} value={f.needBy} onChange={set('needBy')} />
           </Field>
 
-          {!isEvent && (
-            <>
+          <>
               <div style={{ ...styles.toggle, marginTop: 14 }}>
                 {[['pickup', BRAND.pickupLabel], ['shipping', 'Ship it to me']].map(([k, label]) => (
                   <button type="button" key={k} onClick={() => setF(p => ({ ...p, fulfillment: k }))}
@@ -204,8 +193,7 @@ export default function OrderForm() {
                   <div style={ui.hint}>Shipping is added to your quote.</div>
                 </div>
               )}
-            </>
-          )}
+          </>
         </section>
 
         <section style={ui.card}>

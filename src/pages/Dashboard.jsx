@@ -9,7 +9,7 @@ import { BRAND } from '../brand'
 import Nav from '../components/Nav'
 import { ui, Badge, Button, Loading, useFlash, Select } from '../components/ui'
 
-const TIER_COLORS = { Spark: 'var(--success)', Wire: 'var(--secondary)', Forge: 'var(--accent)' }
+const TIER_COLORS = { Spark: 'var(--success)', Wire: 'var(--secondary)', Forge: 'var(--plum)' }
 const APPQUE_STATUSES = ['new', 'quoted', 'deposit_paid', 'in_progress', 'completed', 'declined']
 
 export default function Dashboard() {

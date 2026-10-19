@@ -31,26 +31,26 @@ const InvoiceSchema = z.object({
 const ALLOWED_MEDIA = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 function quotePrompt(description) {
-  return `You are a pricing assistant for "${BRAND.name}", a small custom sticker and label business that also runs sticker bar experiences at events.
+  return `You are a pricing assistant for "${BRAND.name}", a small custom studio that makes 3D printed pieces, personalized gifts and keepsakes, brand merch (apparel, mugs, journals), vendor essentials (signs, displays, business accessories), and digital papers/designs.
 
 Estimate realistic supply/material costs and labor for this custom work:
 ${description || '(see the attached images)'}
 
 Guidelines:
 - Return one entry in "items" per distinct item type. Set "qty" to how many of that item are being made.
-- In supplyLines, "qty" is the TOTAL quantity of that material for the ENTIRE batch (e.g. 4 sheets of vinyl for 200 stickers), never per item.
-- Typical small-shop supply costs: printable vinyl sheets $0.60–1.50/sheet (8.5"×11"), holographic or clear vinyl $1.20–2.50/sheet, cold laminate $0.40–1.00/sheet, ink $0.05–0.20 per sheet printed, packaging (cello sleeves, backing cards, mailers) $0.05–0.75 each, die-cut blade wear $0.01–0.03 per sticker.
-- A letter sheet typically yields ~20 3" stickers, ~35 2" stickers, or ~9 4" stickers.
-- Sticker bar events: include sticker inventory, sheets/backing, display supplies, travel, and setup/teardown time.
-- Labor is $18–30/hr. Amortize design, setup, weeding and packing time across the batch and express it as laborPerUnit.
+- In supplyLines, "qty" is the TOTAL quantity of that material for the ENTIRE batch (e.g. 600 g of filament for 12 keychains), never per item.
+- Typical small-studio costs: PLA/PETG filament $0.02–0.03/g (silk/specialty $0.03–0.05/g), resin $0.05–0.10/ml, magnets/keyrings/small hardware $0.10–0.75 each; sublimation blanks — 11 oz mug $2–4, 15 oz $3–5, tumbler $5–12, t-shirt $3–8, hoodie $12–20, journal $3–8; sublimation/HTV/DTF transfer $0.50–3.00 each; acrylic or wood blanks $1–8; packaging (boxes, tissue, bags, thank-you cards) $0.25–2.00 per order.
+- Account for print time on 3D pieces as machine/electricity cost (~$0.25–0.50 per print hour) in supplyLines.
+- Labor is $20–30/hr. Amortize design, setup, pressing, post-processing (sanding, painting, assembly) and packing time across the batch and express it as laborPerUnit.
+- Digital-only work (designs, digital papers): no supplies; price the design time as labor.
 - "reasoning" is one short sentence.`
 }
 
 function invoicePrompt(description) {
-  return `You are a billing assistant for "${BRAND.name}", a small custom sticker and label business. Create invoice line items for work that has been completed:
+  return `You are a billing assistant for "${BRAND.name}", a small custom studio (3D prints, personalized gifts and keepsakes, brand merch, vendor essentials, digital designs). Create invoice line items for work that has been completed:
 ${description || '(see the attached images)'}
 
-Use fair retail pricing for quality custom stickers and labels from a small business. One line per distinct item or service; use the quantities mentioned. "reasoning" is one short sentence.`
+Use fair retail pricing for quality handmade custom goods from a small business. One line per distinct item or service; use the quantities mentioned. "reasoning" is one short sentence.`
 }
 
 export default async function handler(req, res) {

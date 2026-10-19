@@ -64,5 +64,5 @@ export default function Downloads() {
 }
 
 const styles = {
-  icon: { width: 48, height: 48, borderRadius: 12, background: 'var(--card2)', color: 'var(--accent)', fontWeight: 800, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  icon: { width: 48, height: 48, borderRadius: 12, background: 'var(--card2)', color: 'var(--primary)', fontWeight: 800, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
 }

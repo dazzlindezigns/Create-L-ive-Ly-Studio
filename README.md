@@ -1,6 +1,6 @@
-# [HER BUSINESS NAME] — Order Management PWA
+# Create(L)ive(Ly) Studio — Orders & Shop PWA
 
-Custom order + shop management for a sticker / label / sticker bar business. Modeled on the MakerQue (DCIoS) app.
+Custom orders, shop and studio management for Create(L)ive(Ly) Studio — 3D prints (Labs), digital papers (Paper Studio), vendor essentials (Vendors) and empowering merch (Elevate). Modeled on the MakerQue (DCIoS) app.
 
 **Customer side:** custom order form (`/`), quote review with e-sign + Square payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
 
@@ -9,8 +9,8 @@ Custom order + shop management for a sticker / label / sticker bar business. Mod
 ## Stack
 React 18 + Vite · React Router v6 · inline style objects + CSS variables · Supabase · Vercel serverless functions · Square Payment Links · Resend · EasyPost · web-push · Anthropic API (`claude-opus-4-8`)
 
-## Rebrand first
-Everything brand-related lives in **`src/brand.js`**: name, location, time zone, colors, product types, bulk tiers, quote terms. Also update the two static files: `public/manifest.json` (name + `theme_color`) and `public/icon.svg` (then regenerate the PNG icons from it).
+## Branding
+Everything brand-related lives in **`src/brand.js`**: name, colors and fonts (taken from her Payhip theme), collections, custom-order product types, bulk tiers and quote terms. Still to fill in there: `ownerFirstName`, `location`, `pickupLabel` and `timezone`. Static brand files: `public/manifest.json`, `public/logo.png` (her transparent logo) and the icons/OG image generated from it.
 
 ## Setup
 

@@ -1,11 +1,12 @@
-# Sticker Bar Orders — Claude Session Context
+# Create(L)ive(Ly) Studio — Claude Session Context
 
-Order management PWA for **[HER BUSINESS NAME]** (custom stickers, labels, sticker bar events). Modeled on `dazzlindezigns/MakerQue-App` (DCIoS); see README.md for setup.
+Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom gifts & keepsakes, brand merch, vendor essentials, digital papers). Her storefront today is Payhip at createlivelyinc.com; brand colors/fonts in `src/brand.js` come from that theme. Modeled on `dazzlindezigns/MakerQue-App` (DCIoS); see README.md for setup.
 
 ## Stack
 - React 18 + Vite SPA, React Router v6
 - Inline CSS style objects only (no Tailwind, no CSS modules). Shared pieces in `src/components/ui.jsx`.
-- Theme: CSS variables `--primary --secondary --accent --bg --card --card2 --dark --mid --muted --border --success --warning --danger`, set at runtime from `COLORS` in `src/brand.js`.
+- Theme: CSS variables `--primary --secondary --accent --plum --bg --card --card2 --dark --mid --muted --border --success --warning --danger`, set at runtime from `COLORS` in `src/brand.js`. `--accent` (#EFA2B3) is too light for text on white — use it only for gradients/decoration. Fonts: Playfair Display (headings), Montserrat (body).
+- Shop products belong to a collection (`products.collection`, keys from `COLLECTIONS` in `src/brand.js`: labs, paper-studio, vendors, elevate). The shop filters via `?c=<key>` (or `?c=digital`).
 - Supabase (anon key in browser; service role key only in `/api`)
 - Vercel functions, ESM, `export default async function handler(req, res)`
 - Square Payment Links (JSON API, Bearer `SQUARE_SECRET_KEY`), Resend, EasyPost, web-push, Anthropic SDK (`claude-opus-4-8`, structured outputs via zod)

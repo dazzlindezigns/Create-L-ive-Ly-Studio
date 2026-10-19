@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
+import { COLLECTIONS } from '../brand'
 import Nav from '../components/Nav'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash, Badge } from '../components/ui'
 
-const BLANK = { kind: 'physical', name: '', description: '', price: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
-const BLANK_DIGITAL = { ...BLANK, kind: 'digital', bulk_pricing_enabled: false }
+const BLANK = { kind: 'physical', collection: '', name: '', description: '', price: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
+const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', bulk_pricing_enabled: false }
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/schema.sql
 
 export default function AdminProducts() {
@@ -61,10 +62,11 @@ export default function AdminProducts() {
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
                 <div style={ui.muted}>
                   {fmt(p.price)}
+                  {p.collection && ` · ${COLLECTIONS.find(c => c.key === p.collection)?.name || p.collection}`}
                   {p.kind === 'digital' ? ` · ${p.digital_file_name || 'no file uploaded'}` : p.options?.length ? ` · ${p.options.length} options` : ''}
                 </div>
               </div>
-              {p.kind === 'digital' && <Badge color="var(--accent)" bg="var(--card2)">Digital</Badge>}
+              {p.kind === 'digital' && <Badge color="var(--primary)" bg="var(--card2)">Digital</Badge>}
               {p.kind === 'digital' && !p.digital_file_path && <Badge color="var(--danger)" bg="rgba(220,38,38,0.08)">Needs file</Badge>}
               {!p.active && <Badge color="#888" bg="rgba(0,0,0,0.06)">Hidden</Badge>}
             </button>
@@ -139,6 +141,7 @@ function ProductModal({ product, onClose, onSaved, flash }) {
     setBusy(true)
     const row = {
       kind: isDigital ? 'digital' : 'physical',
+      collection: p.collection || null,
       digital_file_path: isDigital ? p.digital_file_path : null,
       digital_file_name: isDigital ? p.digital_file_name : null,
       name: p.name.trim(), description: p.description?.trim() || null, price: round2(p.price),
@@ -169,6 +172,10 @@ function ProductModal({ product, onClose, onSaved, flash }) {
           ))}
         </div>
         <Field label="Name"><Input value={p.name} onChange={set('name')} /></Field>
+        <Field label="Collection">
+          <Select value={p.collection || ''} onChange={set('collection')}
+            options={[{ value: '', label: 'No collection' }, ...COLLECTIONS.map(c => ({ value: c.key, label: c.name }))]} />
+        </Field>
         <div style={ui.row}>
           <Field label="Price ($)"><Input type="number" step="0.01" value={p.price} onChange={set('price')} /></Field>
           <Field label="Sort order"><Input type="number" value={p.sort_order} onChange={set('sort_order')} /></Field>
