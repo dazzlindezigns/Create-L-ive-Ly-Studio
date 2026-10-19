@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, uploadFile } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
@@ -56,6 +56,26 @@ export default function ShopProducts() {
   const shown = all.filter(p => active.key === 'all' || (active.key === 'digital' ? offersDigital(p) : p.collection === active.key))
   const stickerView = active.key === STICKER_BAR.collection
 
+  // Collections bar: keep the selected tab in view when it scrolls sideways on phones.
+  const barRef = useRef(null)
+  useEffect(() => {
+    const center = () => {
+      const bar = barRef.current
+      const tab = bar?.querySelector('[aria-current="true"]')
+      if (!tab) return
+      const barBox = bar.getBoundingClientRect(), tabBox = tab.getBoundingClientRect()
+      bar.scrollLeft += tabBox.left - barBox.left - (barBox.width - tabBox.width) / 2
+    }
+    center()
+    document.fonts?.ready.then(center) // tab widths change once the web font loads
+  }, [active.key, products])
+  const pickCollection = (key) => {
+    setParam('c', key === 'all' ? null : key)
+    // If the bar is pinned mid-scroll, jump back up so the new collection starts in view.
+    const top = (barRef.current?.parentElement?.offsetTop || 0) - 80
+    if (window.scrollY > top + 40) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }
+
   const add = (product, option, quantity, format) => {
     const digital = format === 'digital'
     const key = `${product.id}|${digital ? '' : option || ''}|${format}`
@@ -101,11 +121,14 @@ export default function ShopProducts() {
           <div style={{ ...ui.hint, textAlign: 'center', marginTop: -8, marginBottom: 16 }}>📦 Free shipping on orders over {fmt(settings.shop_free_shipping_over)}</div>
         )}
 
-        <div style={styles.filters}>
-          {filters.map(f => (
-            <button key={f.key} onClick={() => setParam('c', f.key === 'all' ? null : f.key)} style={{ ...styles.filter, ...(active.key === f.key ? styles.filterOn : {}) }}>{f.label}</button>
-          ))}
-        </div>
+        <nav aria-label="Shop collections" style={styles.filterBar}>
+          <div ref={barRef} className="scroll-x" style={styles.filters}>
+            {filters.map((f, i) => (
+              <button key={f.key} onClick={() => pickCollection(f.key)} aria-current={active.key === f.key ? 'true' : undefined}
+                style={{ ...styles.filter, ...(active.key === f.key ? styles.filterOn : {}), ...(i === 0 ? { marginLeft: 'auto' } : {}), ...(i === filters.length - 1 ? { marginRight: 'auto' } : {}) }}>{f.label}</button>
+            ))}
+          </div>
+        </nav>
         {shown.length === 0 ? (
           active.key === 'all' || active.key === 'digital'
             ? <ComingSoonCollections onPick={key => setParam('c', key)} />
@@ -497,8 +520,11 @@ const styles = {
   bulkRow: { display: 'flex', justifyContent: 'space-between', padding: '7px 12px', borderBottom: '1px solid var(--border)' },
   cartLine: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' },
   qty: { display: 'flex', alignItems: 'center', gap: 4 },
-  filters: { display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 14 },
-  filter: { padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
+  // Pinned just under the 68px site header while scrolling the shop.
+  filterBar: { position: 'sticky', top: 68, zIndex: 90, margin: '0 -20px 16px', padding: '10px 20px', background: 'rgba(255,250,249,0.94)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border)' },
+  // Centered via auto margins on the end tabs (justify-content: center clips overflowing tabs).
+  filters: { display: 'flex', gap: 8, overflowX: 'auto', flexWrap: 'nowrap' },
+  filter: { flexShrink: 0, whiteSpace: 'nowrap', padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   filterOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
   digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--primary)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
   ctaPink: { display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, var(--accent), var(--primary))', color: '#fff', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', textDecoration: 'none' },
