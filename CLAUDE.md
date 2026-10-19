@@ -20,6 +20,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 - Email HTML must escape user input with `esc()` / `escBr()` from `api/_lib/email.js`.
 - AI calculator: `supplyLines[].qty` is the **total batch quantity** — don't multiply by `item.qty`.
 - Column `stripe_payment_url` holds the latest Square link (name kept from the reference schema).
+- **Sticker Bar** bookings come through the custom order form (`STICKER_BAR` in `src/brand.js`): `fulfillment = 'event'`, `quantity` = guests, `need_by` = event date, details in `orders.event_details` jsonb.
 - **Digital products** (`products.kind = 'digital'`): files go in the PRIVATE `digital-products` bucket; only `digital_file_path` is stored. Never select or return that path to customers (`get-products` omits it; `publicOrder()` strips `digitalFilePath` from `shop_cart`). Buyers get signed URLs only via `api/_handlers/get-downloads.js`, and only when paid in full. Shared logic lives in `api/_lib/downloads.js`.
 
 ## Key files

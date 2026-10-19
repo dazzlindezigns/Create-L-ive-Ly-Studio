@@ -46,6 +46,9 @@ npx vercel dev               # runs the Vite app AND /api functions
 - **One function for all routes.** `api/[action].js` dispatches to `api/_handlers/*.js`, so the whole API counts as 2 functions on Vercel's Hobby plan (limit 12). `api/square-webhook.js` is separate because it needs the raw request body.
 - **Payments:** each Square checkout is recorded in `payments`; the webhook matches it by Square order ID, updates `amount_paid`, and moves the order to `confirmed`. Cash/Zelle/etc. can be recorded manually on the order page.
 
+## Sticker Bar bookings
+The custom order form includes **Sticker Bar (event booking)**. Choosing it swaps the product fields for event fields: date, start time, length, guest count, event type, venue and address. These are saved in `orders.event_details`, the guest count goes in `quantity`, and the event date goes in `need_by`. Booking requests get their own email subject and push notification, and they skip pickup/shipping. Link straight to the booking form with `/?type=sticker-bar`.
+
 ## Digital products
 - In **Shop → + Digital**, add a name, price and preview images, then upload the file buyers will receive (PDF, ZIP, PNG, SVG, cut files, Procreate, fonts, etc., up to 50 MB; zip multiple files together).
 - Files live in the **private** `digital-products` storage bucket. The browser never sees the storage path.

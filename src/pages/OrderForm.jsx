@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { BRAND, PRODUCT_TYPES } from '../brand'
+import { Link, useSearchParams } from 'react-router-dom'
+import { BRAND, PRODUCT_TYPES, STICKER_BAR } from '../brand'
 import { api, uploadFile } from '../lib/api'
 import { ui, Button, Field, Input, TextArea, Select, BrandHeader, Spinner } from '../components/ui'
 
@@ -8,13 +8,16 @@ const BLANK = {
   productType: '', quantity: 1, size: '', finish: '',
   description: '', needBy: '', fulfillment: 'pickup',
   street: '', street2: '', city: '', state: '', zip: '',
+  eventType: STICKER_BAR.eventTypes[0], startTime: '', duration: STICKER_BAR.durations[1], venue: '', eventAddress: '',
   customerName: '', customerEmail: '', customerPhone: '', notes: '',
 }
 
 const MAX_FILE_MB = 25
 
 export default function OrderForm() {
-  const [f, setF] = useState(BLANK)
+  // /?type=sticker-bar opens the form with the Sticker Bar booking preselected (handy for her socials/Payhip).
+  const [params] = useSearchParams()
+  const [f, setF] = useState(() => params.get('type') === 'sticker-bar' ? { ...BLANK, productType: STICKER_BAR.label, quantity: 20 } : BLANK)
   const [files, setFiles] = useState([]) // [{ id, name, url, status: 'uploading'|'done'|'error', error }]
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -22,6 +25,7 @@ export default function OrderForm() {
 
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
   const uploading = files.some(x => x.status === 'uploading')
+  const isEvent = f.productType === STICKER_BAR.label
 
   const onFiles = async (e) => {
     const picked = [...e.target.files]
@@ -56,12 +60,13 @@ export default function OrderForm() {
           customerPhone: f.customerPhone,
           productType: f.productType,
           quantity: f.quantity,
-          size: f.size,
-          finish: f.finish,
+          size: isEvent ? null : f.size,
+          finish: isEvent ? null : f.finish,
+          eventDetails: isEvent ? { eventType: f.eventType, startTime: f.startTime, duration: f.duration, venue: f.venue, address: f.eventAddress } : null,
           description: f.description,
           needBy: f.needBy,
           notes: f.notes,
-          fulfillment: f.fulfillment,
+          fulfillment: isEvent ? 'event' : f.fulfillment,
           shippingAddress: { street: f.street, street2: f.street2, city: f.city, state: f.state, zip: f.zip },
           imageUrls: files.filter(x => x.status === 'done').map(x => x.url),
         },
@@ -85,7 +90,7 @@ export default function OrderForm() {
             <h1 style={ui.h1}>Request received!</h1>
             <p style={{ color: 'var(--mid)', margin: '12px 0 22px', lineHeight: 1.6 }}>
               Thanks, {f.customerName.split(' ')[0]}! We emailed a copy to <strong>{f.customerEmail}</strong>.
-              You'll get your quote by email soon.
+              You'll get your quote by email soon.{isEvent && ' Your date is reserved once the deposit is paid.'}
             </p>
             <Button variant="ghost" onClick={() => { setF(BLANK); setFiles([]); setDoneId(null) }}>Submit another request</Button>
           </div>
@@ -113,13 +118,38 @@ export default function OrderForm() {
           <h2 style={ui.h2}>What are we making?</h2>
           <div style={styles.chips}>
             {PRODUCT_TYPES.map(t => (
-              <button type="button" key={t} onClick={() => setF(p => ({ ...p, productType: t }))}
+              <button type="button" key={t} onClick={() => setF(p => ({ ...p, productType: t, ...(t === STICKER_BAR.label && p.quantity < 5 ? { quantity: 20 } : {}) }))}
                 style={{ ...styles.chip, ...(f.productType === t ? styles.chipOn : {}) }}>
                 {t}
               </button>
             ))}
           </div>
 
+          {isEvent ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+              <p style={{ ...ui.muted, lineHeight: 1.6 }}>{STICKER_BAR.blurb}</p>
+              <div style={ui.row}>
+                <Field label="Event date">
+                  <Input type="date" min={minDate} value={f.needBy} onChange={set('needBy')} required />
+                </Field>
+                <Field label="Start time">
+                  <Input type="time" value={f.startTime} onChange={set('startTime')} />
+                </Field>
+              </div>
+              <div style={ui.row}>
+                <Field label="How long?"><Select value={f.duration} onChange={set('duration')} options={STICKER_BAR.durations} /></Field>
+                <Field label="Expected guests" style={{ maxWidth: 150 }}>
+                  <Input type="number" min={1} inputMode="numeric" value={f.quantity} onChange={set('quantity')} required />
+                </Field>
+              </div>
+              <Field label="Type of event"><Select value={f.eventType} onChange={set('eventType')} options={STICKER_BAR.eventTypes} /></Field>
+              <Field label="Venue name (optional)"><Input value={f.venue} onChange={set('venue')} placeholder="e.g. Grace Fellowship Hall" /></Field>
+              <Field label="Event address or city" hint="So we can plan travel and setup.">
+                <Input value={f.eventAddress} onChange={set('eventAddress')} required />
+              </Field>
+            </div>
+          ) : (
+            <>
           <div style={{ ...ui.row, marginTop: 16 }}>
             <Field label="Quantity" style={{ maxWidth: 130 }}>
               <Input type="number" min={1} inputMode="numeric" value={f.quantity} onChange={set('quantity')} required />
@@ -131,9 +161,13 @@ export default function OrderForm() {
           <Field label="Colors, material or finish (optional)" style={{ marginTop: 12 }}>
             <Input placeholder="e.g. blush pink & gold, matte, PLA silk" value={f.finish} onChange={set('finish')} />
           </Field>
+            </>
+          )}
 
-          <Field label="Describe what you'd like" style={{ marginTop: 12 }}
-            hint="Names, dates, text, colors, the occasion, who it's for — anything that helps us bring it to life.">
+          <Field label={isEvent ? 'Theme & sticker ideas' : "Describe what you'd like"} style={{ marginTop: 12 }}
+            hint={isEvent
+              ? 'Party theme, colors, names or logos to include, ages of guests — and anything about the space (tables, power, indoor/outdoor).'
+              : "Names, dates, text, colors, the occasion, who it's for — anything that helps us bring it to life."}>
             <TextArea value={f.description} onChange={set('description')} required />
           </Field>
         </section>
@@ -165,6 +199,7 @@ export default function OrderForm() {
           )}
         </section>
 
+        {!isEvent && (
         <section style={ui.card}>
           <div style={ui.eyebrow}>Step 3</div>
           <h2 style={ui.h2}>Timing & delivery</h2>
@@ -195,9 +230,10 @@ export default function OrderForm() {
               )}
           </>
         </section>
+        )}
 
         <section style={ui.card}>
-          <div style={ui.eyebrow}>Step 4</div>
+          <div style={ui.eyebrow}>{isEvent ? 'Step 3' : 'Step 4'}</div>
           <h2 style={ui.h2}>Your info</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Field label="Full name"><Input autoComplete="name" value={f.customerName} onChange={set('customerName')} required /></Field>
@@ -211,7 +247,7 @@ export default function OrderForm() {
 
         {error && <div style={ui.error}>{error}</div>}
         <Button type="submit" variant="gradient" block loading={submitting} disabled={uploading} style={{ padding: 17, fontSize: 16 }}>
-          {uploading ? 'Uploading files…' : 'Send my request →'}
+          {uploading ? 'Uploading files…' : isEvent ? 'Request my Sticker Bar →' : 'Send my request →'}
         </Button>
         <p style={{ ...ui.muted, textAlign: 'center', fontSize: 12 }}>No payment now — you'll review and approve a quote first.</p>
       </form>

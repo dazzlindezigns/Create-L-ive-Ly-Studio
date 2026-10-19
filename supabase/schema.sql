@@ -42,7 +42,8 @@ create table if not exists orders (
   notes                 text,
   image_urls            text[],
   source                text default 'form',          -- 'form' | 'shop' | 'invoice'
-  fulfillment           text default 'pickup',        -- 'pickup' | 'shipping' | 'digital' (download-only shop orders)
+  fulfillment           text default 'pickup',        -- 'pickup' | 'shipping' | 'digital' (download-only shop orders) | 'event' (Sticker Bar)
+  event_details         jsonb,                        -- Sticker Bar bookings: { eventType, startTime, duration, venue, address }
   shipping_address      jsonb,                        -- { name, street, city, state, zip }
 
   -- Customer

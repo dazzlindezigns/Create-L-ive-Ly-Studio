@@ -56,7 +56,17 @@ export const COLLECTIONS = [
 ]
 
 // Custom order form — plain labels stored on the order. Edit freely.
+// The Sticker Bar is an on-site event experience, so it gets its own booking fields on the form.
+export const STICKER_BAR = {
+  label: 'Sticker Bar (event booking)',
+  blurb: 'A build-your-own sticker experience for parties, showers, school & church events, team days and pop-ups.',
+  eventTypes: ['Birthday party', 'Baby or bridal shower', 'School or church event', 'Corporate / team event', 'Vendor market or pop-up', 'Other'],
+  durations: ['1 hour', '2 hours', '3 hours', '4+ hours'],
+}
+
 export const PRODUCT_TYPES = [
+  STICKER_BAR.label,
+  'Custom stickers & labels',
   '3D printed piece',
   'Custom gift or keepsake',
   'Apparel',

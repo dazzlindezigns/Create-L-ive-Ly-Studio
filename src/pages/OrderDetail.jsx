@@ -84,13 +84,22 @@ export default function OrderDetail() {
         <section style={ui.card}>
           <h2 style={ui.h2}>Request</h2>
           <dl style={styles.dl}>
-            <Row k="Product" v={`${order.product_type} × ${order.quantity}`} />
+            <Row k={order.event_details ? 'Booking' : 'Product'} v={order.event_details ? `${order.product_type} · ${order.quantity} guests` : `${order.product_type} × ${order.quantity}`} />
             <Row k="Size" v={order.size} />
             <Row k="Finish" v={order.finish} />
-            <Row k="Need by" v={order.need_by && new Date(order.need_by + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} />
+            <Row k={order.event_details ? 'Event date' : 'Need by'} v={order.need_by && new Date(order.need_by + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} />
             <Row k="Delivery" v={order.fulfillment === 'shipping'
               ? `Ship to ${[order.shipping_address?.street, order.shipping_address?.street2, order.shipping_address?.city].filter(Boolean).join(', ')}, ${order.shipping_address?.state || ''} ${order.shipping_address?.zip || ''}`
-              : order.fulfillment === 'digital' ? 'Digital download (nothing to ship)' : BRAND.pickupLabel} />
+              : order.fulfillment === 'digital' ? 'Digital download (nothing to ship)'
+              : order.fulfillment === 'event' ? 'On-site Sticker Bar' : BRAND.pickupLabel} />
+            {order.event_details && <>
+              <Row k="Time" v={[order.event_details.startTime && formatTime(order.event_details.startTime), order.event_details.duration].filter(Boolean).join(' · ')} />
+              <Row k="Event" v={order.event_details.eventType} />
+              <Row k="Venue" v={order.event_details.venue} />
+              <Row k="Address" v={order.event_details.address && (
+                <a href={`https://maps.google.com/?q=${encodeURIComponent(order.event_details.address)}`} target="_blank" rel="noreferrer">{order.event_details.address}</a>
+              )} />
+            </>}
           </dl>
           {order.description && <p style={styles.pre}>{order.description}</p>}
           {order.notes && <><div style={{ ...ui.label, marginTop: 12 }}>Customer notes</div><p style={styles.pre}>{order.notes}</p></>}
@@ -117,7 +126,7 @@ export default function OrderDetail() {
         )}
 
         {/* Fulfillment */}
-        {order.fulfillment !== 'digital' && (
+        {!['digital', 'event'].includes(order.fulfillment) && (
         <section style={ui.card}>
           <h2 style={ui.h2}>{order.fulfillment === 'shipping' ? 'Shipping' : 'Pickup'}</h2>
           {order.tracking_number ? (
@@ -460,7 +469,7 @@ function EditModal({ order, onClose, onSave }) {
           <Field label="Need by"><Input type="date" value={f.need_by} onChange={set('need_by')} /></Field>
         </div>
         <Field label="Description"><TextArea value={f.description} onChange={set('description')} /></Field>
-        <Field label="Fulfillment"><Select value={f.fulfillment} onChange={set('fulfillment')} options={[{ value: 'pickup', label: 'Pickup' }, { value: 'shipping', label: 'Shipping' }]} /></Field>
+        <Field label="Fulfillment"><Select value={f.fulfillment} onChange={set('fulfillment')} options={[{ value: 'pickup', label: 'Pickup' }, { value: 'shipping', label: 'Shipping' }, { value: 'event', label: 'Sticker Bar (on-site)' }, ...(f.fulfillment === 'digital' ? [{ value: 'digital', label: 'Digital download' }] : [])]} /></Field>
         {f.fulfillment === 'shipping' && (
           <>
             <Field label="Street"><Input value={f.street} onChange={set('street')} /></Field>
@@ -490,6 +499,11 @@ function FileGrid({ urls }) {
       ))}
     </div>
   )
+}
+
+const formatTime = (t) => {
+  const [h, m] = t.split(':').map(Number)
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
 const Row = ({ k, v }) => v ? (

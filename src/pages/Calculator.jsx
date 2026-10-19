@@ -127,7 +127,7 @@ export default function Calculator() {
         <section style={ui.card} className="no-print">
           <h2 style={ui.h2}>✨ AI estimate</h2>
           <TextArea rows={3} value={description} onChange={e => setDescription(e.target.value)}
-            placeholder='e.g. "12 personalized 3D printed keychains with names" or "24 custom 15oz mugs with a logo for a vendor event"' />
+            placeholder='e.g. "12 personalized 3D printed keychains with names" or "Sticker Bar for 30 guests at a baby shower, 2 hours"' />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
             {images.map((img, i) => (
               <div key={i} style={{ position: 'relative' }}>
