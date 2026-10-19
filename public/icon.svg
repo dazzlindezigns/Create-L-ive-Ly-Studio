@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- TODO(brand): replace with her logo. Placeholder: a peeling sticker in the placeholder palette. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C5CFF"/>
+      <stop offset="1" stop-color="#FF4F8B"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <path d="M136 120h240a16 16 0 0 1 16 16v150L286 392H136a16 16 0 0 1-16-16V136a16 16 0 0 1 16-16z" fill="#fff"/>
+  <path d="M392 286L286 392V302a16 16 0 0 1 16-16z" fill="#FFD6E6"/>
+  <circle cx="210" cy="220" r="22" fill="#2B2233"/>
+  <circle cx="302" cy="220" r="22" fill="#2B2233"/>
+  <path d="M200 280c30 34 82 34 112 0" stroke="#2B2233" stroke-width="20" stroke-linecap="round" fill="none"/>
+</svg>
