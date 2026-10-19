@@ -4,7 +4,7 @@ import { BRAND, COLLECTIONS, PARTNERS, SITE, STICKER_BAR } from '../brand'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 import { api } from '../lib/api'
 import { fmt } from '../lib/money'
-import { normalizeTiers, offersDigital } from '../lib/cart'
+import { tiersFromSettings, offersDigital } from '../lib/cart'
 
 // Public website homepage. The custom order form lives at /custom and is only reached
 // from the "Request a custom item" buttons.
@@ -13,7 +13,7 @@ export default function Home() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [sheets, setSheets] = useState([])
-  const [tiers, setTiers] = useState(() => normalizeTiers(STICKER_BAR.stackTiers))
+  const [tiers, setTiers] = useState(() => tiersFromSettings())
 
   // Live Sticker Bar sheets + her current Stack & Save tiers (falls back to the mockups below).
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function Home() {
       const live = p.filter(x => x.collection === STICKER_BAR.collection)
       setSheets(live.slice(0, live.length >= 6 ? 6 : live.length >= 3 ? 3 : 0))
     }).catch(() => {})
-    api('get-settings').then(s => setTiers(normalizeTiers(s.sticker_bar_tiers))).catch(() => {})
+    api('get-settings').then(s => setTiers(tiersFromSettings(s))).catch(() => {})
   }, [])
 
   // Old links: /?type=… (the form used to live here) and /?type=sticker-bar (now the sticker sheet shop).

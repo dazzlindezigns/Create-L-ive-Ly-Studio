@@ -42,7 +42,10 @@ img { max-width: 100%; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Printable documents (quote / invoice / receipt PDF) — hidden on screen. */
+.print-only { display: none; }
 @media print {
+  .print-only { display: block !important; }
   .no-print { display: none !important; }
   body { background: #fff; }
 }
@@ -83,6 +86,15 @@ img { max-width: 100%; }
 .detail-cols { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: start; }
 .detail-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 @media (min-width: 1080px) { .detail-cols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); } }
+
+/* Dashboard: pipeline stats and status filters are grids so nothing scrolls sideways on phones */
+.dash-pipeline { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dash-tabs { display: grid; gap: 6px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (min-width: 700px) {
+  .dash-pipeline { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+  .dash-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dash-tabs > button { padding: 8px 14px !important; border-radius: 50px !important; font-size: 13px !important; }
+}
 
 /* Modals: bottom sheet on phones, centered dialog on desktop */
 @media (min-width: 700px) {

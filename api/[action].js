@@ -22,6 +22,7 @@ const routes = {
   // Admin (require a signed-in admin)
   'send-quote':          () => import('./_handlers/send-quote.js'),
   'send-proof':          () => import('./_handlers/send-proof.js'),
+  'send-status-update':  () => import('./_handlers/send-status-update.js'),
   'mark-shipped':        () => import('./_handlers/mark-shipped.js'),
   'estimate-from-description': () => import('./_handlers/estimate-from-description.js'),
   'write-listing':       () => import('./_handlers/write-listing.js'),

@@ -11,6 +11,8 @@ import EmailPanel from '../components/EmailPanel'
 import { ui, Badge, Button, Field, Input, TextArea, Select, Loading, useFlash, Modal } from '../components/ui'
 
 const PRE_PAYMENT = ['pending', 'quote_sent', 'invoice_sent', 'payment_pending']
+// Statuses with a ready-made customer email (api/_handlers/send-status-update.js).
+const STAGE_EMAILS = { in_production: 'In production', ready_for_pickup: 'Ready for pickup', completed: 'Thank-you', declined: 'Declined' }
 
 export default function OrderDetail() {
   const { id } = useParams()
@@ -22,6 +24,8 @@ export default function OrderDetail() {
   const [shipOpen, setShipOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
+  const [stagePrompt, setStagePrompt] = useState(null)
+  const [stageSending, setStageSending] = useState(false)
 
   const load = useCallback(async () => {
     const [{ data, error }, { data: pays }] = await Promise.all([
@@ -71,11 +75,27 @@ export default function OrderDetail() {
           </div>
           <div style={{ ...ui.row, marginTop: 14, alignItems: 'flex-end' }}>
             <Field label="Status">
-              <Select value={order.status} onChange={e => update({ status: e.target.value }, `Status → ${STATUS[e.target.value]?.label}`)}
+              <Select value={order.status} onChange={async e => {
+                const status = e.target.value
+                if (await update({ status }, `Status → ${STATUS[status]?.label}`)) setStagePrompt(STAGE_EMAILS[status] && order.customer_email ? status : null)
+              }}
                 options={STATUS_ORDER.map(k => ({ value: k, label: STATUS[k].label }))} />
             </Field>
             <Button variant="ghost" small onClick={() => setEditOpen(true)}>Edit details</Button>
           </div>
+          {stagePrompt && (
+            <div style={styles.stagePrompt}>
+              <span>✉️ Email {firstName} the <strong>{STAGE_EMAILS[stagePrompt]}</strong> update?</span>
+              <span style={{ display: 'flex', gap: 8 }}>
+                <Button small loading={stageSending} onClick={async () => {
+                  setStageSending(true)
+                  try { await api('send-status-update', { auth: true, body: { orderId: order.id, stage: stagePrompt } }); flash(`Emailed ${firstName} ✉️`); setStagePrompt(null); load() }
+                  catch (err) { flash(err.message, 'error') } finally { setStageSending(false) }
+                }}>Send email</Button>
+                <Button small variant="ghost" onClick={() => setStagePrompt(null)}>No thanks</Button>
+              </span>
+            </div>
+          )}
         </section>
 
 
@@ -228,6 +248,7 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
     in_person: (order.payment_methods || []).includes('in_person'),
   })
   const [sending, setSending] = useState(false)
+  const [reminding, setReminding] = useState(false)
   const set = (k) => (e) => setQ(p => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
   const fields = () => ({
@@ -311,6 +332,16 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
           <Button variant="ghost" small onClick={() => update(fields())}>Save</Button>
           <Button small loading={sending} onClick={send}>{order.quote_sent_at ? 'Save & re-send quote' : 'Save & send quote'}</Button>
           <Button variant="ghost" small onClick={onCopyLink}>Copy quote link</Button>
+          {order.price != null && (
+            <Button variant="ghost" small onClick={() => window.open(`/quote/${order.id}?print=1`, '_blank')}>📄 PDF</Button>
+          )}
+          {order.quote_sent_at && remaining > 0 && (
+            <Button variant="ghost" small loading={reminding} onClick={async () => {
+              setReminding(true)
+              try { await api('send-status-update', { auth: true, body: { orderId: order.id, stage: 'payment_reminder' } }); flash('Payment reminder sent ✉️'); reload() }
+              catch (e) { flash(e.message, 'error') } finally { setReminding(false) }
+            }}>⏰ Payment reminder</Button>
+          )}
         </div>
       </div>
 
@@ -526,6 +557,7 @@ const Row = ({ k, v }) => v ? (
 ) : null
 
 const styles = {
+  stagePrompt: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)', fontSize: 14 },
   aiQuote: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 14, padding: 12, marginBottom: 14 },
   dl: { display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 8, columnGap: 12 },
   pre: { whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6, marginTop: 10, color: 'var(--mid)' },

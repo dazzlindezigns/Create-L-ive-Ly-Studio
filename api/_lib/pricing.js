@@ -1,5 +1,5 @@
 import { db, HttpError } from './core.js'
-import { cartTotals, discountAmount, lineFormat, unitPrice, isSticker, offersDigital } from '../../src/lib/cart.js'
+import { cartTotals, discountAmount, lineFormat, unitPrice, offersDigital } from '../../src/lib/cart.js'
 import { round2 } from '../../src/lib/money.js'
 
 export { discountAmount }
@@ -50,7 +50,6 @@ export async function priceCart(items, code, opts = {}) {
       unitPrice: price,
       itemTotal: round2(price * quantity),
       bulkEligible: p.bulk_pricing_enabled !== false,
-      sticker: isSticker(p),
     })
   }
 

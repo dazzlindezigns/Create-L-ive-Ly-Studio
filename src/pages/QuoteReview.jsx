@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { fmt, paymentOptions } from '../lib/money'
 import { BRAND, QUOTE_TERMS } from '../brand'
 import { ui, Button, Field, Input, Loading, BrandHeader } from '../components/ui'
+import OrderDocument from '../components/OrderDocument'
 
 // Customer-facing progress steps.
 const STEPS = [
@@ -23,6 +24,14 @@ export default function QuoteReview() {
 
   const load = useCallback(() => api(`get-order?id=${encodeURIComponent(orderId)}`).then(setOrder).catch(e => setError(e.message)), [orderId])
   useEffect(() => { load() }, [load])
+
+  // ?print=1 (the studio's "PDF" button) opens the browser's Save-as-PDF dialog once the order loads.
+  const autoPrint = params.get('print') === '1'
+  useEffect(() => {
+    if (!autoPrint || !order) return
+    const t = setTimeout(() => window.print(), 600)
+    return () => clearTimeout(t)
+  }, [autoPrint, order])
 
   // After the Stripe redirect, poll briefly until the webhook records the payment.
   const [waiting, setWaiting] = useState(justPaid)
@@ -53,6 +62,7 @@ export default function QuoteReview() {
   const inactive = ['cancelled', 'declined'].includes(order.status)
 
   return (
+    <>
     <Shell>
       {justPaid && (
         <div style={{ ...ui.card, background: 'rgba(22,163,74,0.08)', borderColor: 'rgba(22,163,74,0.25)', textAlign: 'center' }}>
@@ -141,7 +151,15 @@ export default function QuoteReview() {
           <div>{order.shipping_carrier} · <strong>{order.tracking_number}</strong></div>
         </div>
       )}
+
+      {order.price != null && (
+        <Button block variant="ghost" onClick={() => window.print()}>
+          📄 Download {remaining <= 0 ? 'receipt' : isInvoice || isShop ? 'invoice' : 'quote'} (PDF)
+        </Button>
+      )}
     </Shell>
+    <OrderDocument order={order} />
+    </>
   )
 }
 
@@ -218,7 +236,7 @@ function Progress({ order }) {
 
 function Shell({ children }) {
   return (
-    <div style={{ ...ui.page, paddingBottom: 40 }}>
+    <div style={{ ...ui.page, paddingBottom: 40 }} className="no-print">
       <BrandHeader />
       <div style={{ ...ui.wrap, maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 14 }}>
         {children}

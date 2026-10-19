@@ -88,8 +88,6 @@ export const STICKER_BAR = {
     ['📦', 'Ships in 3 days', 'Premium waterproof vinyl, packed flat so nothing bends.'],
     ['✨', 'New sheets every month', 'Fresh drops for every mood and season.'],
   ],
-  // Default Stack & Save tiers. She can change them in Shop → Products (saved in settings.sticker_bar_tiers).
-  stackTiers: [{ min: 3, pct: 10 }, { min: 5, pct: 15 }, { min: 8, pct: 20 }],
   badges: ['New', 'Sale', 'Bestseller', 'Back in stock', 'Limited'],
   // Shown on the homepage until her sheets are live in the shop.
   showcase: ['peace-in-progress', 'brooklyn-block-party', 'autumn-book-babe', 'amalfi-coast-girl', 'summer-block-party', 'retro-girl-era']
@@ -112,6 +110,9 @@ export const PARTNERS = [
   },
 ]
 
+// Suggested "shop is closed" message (Products → Shop settings → "Use the template message").
+export const SHOP_CLOSED_TEMPLATE = "We're taking a short creative break to restock and catch up on custom orders. 💕 The shop will reopen soon — custom requests are still open, so tap “Request a custom item” to start yours. Thank you for your patience and support!"
+
 // Custom order form — plain labels stored on the order. Edit freely.
 export const PRODUCT_TYPES = [
   'Custom stickers & labels',
@@ -126,16 +127,9 @@ export const PRODUCT_TYPES = [
   'Something else',
 ]
 
-export const BULK_TIERS = [
-  { min: 100, pct: 25, label: '100+ items',  badge: '25% off' },
-  { min: 50,  pct: 15, label: '50–99 items', badge: '15% off' },
-  { min: 25,  pct: 10, label: '25–49 items', badge: '10% off' },
-  { min: 10,  pct: 5,  label: '10–24 items', badge: '5% off' },
-]
-
-export function getBulkTier(qty) {
-  return BULK_TIERS.find(t => qty >= t.min) || null
-}
+// Stack & Save: % off every eligible item once the cart holds N+ of them (any products, any mix).
+// Defaults — she edits them in Shop → Products (saved in settings.stack_save_tiers).
+export const STACK_TIERS = [{ min: 3, pct: 10 }, { min: 5, pct: 15 }, { min: 8, pct: 20 }]
 
 export const QUOTE_TERMS = [
   'Your order goes into production once the deposit (or full payment) is received.',

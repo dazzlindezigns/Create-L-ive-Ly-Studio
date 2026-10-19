@@ -1,60 +1,22 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { api } from '../lib/api'
-import { initPush, enablePush } from '../lib/push'
-import { useInstallState, isIOS } from '../lib/pwa'
 import { fmt } from '../lib/money'
 import { QUEUE_PRIORITY, FILTER_TABS, PIPELINE } from '../lib/status'
 import { BRAND } from '../brand'
-import Nav from '../components/Nav'
-import { ui, Badge, Button, Loading, useFlash, Select, Modal } from '../components/ui'
-
-const TIER_COLORS = { Spark: 'var(--success)', Wire: 'var(--secondary)', Forge: 'var(--plum)' }
-const APPQUE_STATUSES = ['new', 'quoted', 'deposit_paid', 'in_progress', 'completed', 'declined']
+import Nav, { AppLinks, IconExternal } from '../components/Nav'
+import { ui, Badge, Loading, useFlash } from '../components/ui'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState(null)
-  const [appque, setAppque] = useState(null)
-  const [inbox, setInbox] = useState(null)
-  const [filter, setFilter] = useState(() => sessionStorage.getItem('dash-filter') || 'queue')
+  const [filter, setFilter] = useState(() => {
+    const saved = sessionStorage.getItem('dash-filter')
+    return FILTER_TABS.some(t => t.key === saved) ? saved : 'queue'
+  })
   const [search, setSearch] = useState('')
-  const [pushState, setPushState] = useState('idle')
-  const { mode: installMode, install } = useInstallState()
-  const [showInstall, setShowInstall] = useState(false)
-  // iPhone/iPad only allow web push from an app installed to the home screen.
-  const needsInstallForPush = isIOS() && installMode !== 'installed'
   const [shopOpen, setShopOpen] = useState(null)
-  const [openAppque, setOpenAppque] = useState(null)
   const [toast, flash] = useFlash()
-
-  // Customer replies (email_log rows with direction 'in'), newest first.
-  const loadInbox = async () => {
-    const { data } = await supabase.from('email_log')
-      .select('id, created_at, order_id, from_email, subject, body_text, attachment_urls, read_at')
-      .eq('direction', 'in').order('created_at', { ascending: false }).limit(100)
-    setInbox(data || [])
-  }
-
-  useEffect(() => {
-    loadOrders()
-    loadInbox()
-    initPush().then(setPushState).catch(() => setPushState('unsupported'))
-    api('get-settings').then(s => setShopOpen(s.shop_open !== false && s.shop_open !== 'false')).catch(() => {})
-
-    // Live updates when new orders arrive or customers respond.
-    const channel = supabase.channel('orders-feed')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadOrders())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_log' }, () => loadInbox())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [])
-
-  useEffect(() => {
-    sessionStorage.setItem('dash-filter', filter)
-    if (filter === 'appque' && appque === null) loadAppque()
-  }, [filter])
 
   const loadOrders = async () => {
     const { data, error } = await supabase
@@ -66,42 +28,25 @@ export default function Dashboard() {
     setOrders(data || [])
   }
 
-  const loadAppque = async () => {
-    const { data } = await supabase.from('appque_submissions').select('*').order('created_at', { ascending: false })
-    setAppque(data || [])
-  }
+  useEffect(() => {
+    loadOrders()
+    // Read straight from Supabase as the signed-in admin (RLS allows it).
+    supabase.from('settings').select('value').eq('key', 'shop_open').maybeSingle()
+      .then(({ data }) => setShopOpen(data ? data.value !== false && data.value !== 'false' : true))
+    const channel = supabase.channel('orders-feed')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadOrders())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setAppqueStatus = async (id, status) => {
-    const { error } = await supabase.from('appque_submissions').update({ status }).eq('id', id)
-    if (error) return flash(error.message, 'error')
-    setAppque(prev => prev.map(a => a.id === id ? { ...a, status } : a))
-  }
+  useEffect(() => { sessionStorage.setItem('dash-filter', filter) }, [filter])
 
   const toggleShop = async () => {
     const next = !shopOpen
     setShopOpen(next)
-    try {
-      await api('save-settings', { body: { key: 'shop_open', value: next }, auth: true })
-      flash(next ? 'Shop is open 🛍' : 'Shop is closed')
-    } catch (e) {
-      setShopOpen(!next)
-      flash(e.message, 'error')
-    }
-  }
-
-  const onEnablePush = async () => {
-    try {
-      const state = await enablePush()
-      setPushState(state)
-      if (state === 'granted') flash('Notifications on for this device')
-    } catch (e) { flash(e.message, 'error') }
-  }
-
-  const testPush = async () => {
-    try {
-      const r = await api('test-push', { body: {}, auth: true })
-      flash(r.configured ? `Sent to ${r.sent} device${r.sent === 1 ? '' : 's'}` : 'VAPID keys are not set on the server', r.configured ? 'ok' : 'error')
-    } catch (e) { flash(e.message, 'error') }
+    const { error } = await supabase.from('settings').upsert({ key: 'shop_open', value: next })
+    if (error) { setShopOpen(!next); return flash(error.message, 'error') }
+    flash(next ? 'Shop is open 🛍' : 'Shop is closed — customers see your closed message')
   }
 
   const counts = useMemo(() => {
@@ -125,6 +70,7 @@ export default function Dashboard() {
   }, [orders, filter, search])
 
   const revenue = (orders || []).reduce((s, o) => s + (Number(o.amount_paid) || 0), 0)
+  const queueCount = (orders || []).filter(o => o.status in QUEUE_PRIORITY).length
 
   return (
     <div style={ui.page} className="admin-page">
@@ -134,11 +80,17 @@ export default function Dashboard() {
             <div style={ui.eyebrow}>{BRAND.name}</div>
             <h1 style={ui.h1}>Orders</h1>
           </div>
-          <button onClick={() => supabase.auth.signOut()} style={styles.signOut} className="hide-desktop">Sign out</button>
+          <div className="hide-desktop" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <a href="/" target="_blank" rel="noreferrer" aria-label="View website" style={styles.iconBtn}><IconExternal size={17} color="var(--mid)" /></a>
+              <button onClick={() => supabase.auth.signOut()} style={styles.signOut}>Sign out</button>
+            </div>
+            <AppLinks align="right" />
+          </div>
         </header>
 
-        {/* Pipeline */}
-        <div style={styles.pipeline} className="scroll-x">
+        {/* Pipeline — fits on a phone without scrolling */}
+        <div className="dash-pipeline" style={styles.pipeline}>
           {PIPELINE.map(p => {
             const n = p.statuses.reduce((s, st) => s + (counts[st] || 0), 0)
             return (
@@ -154,46 +106,19 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Controls */}
-        <div style={styles.controls}>
-          <div style={styles.controlCard}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Shop</div>
-              <div style={ui.muted}>{shopOpen == null ? '…' : shopOpen ? 'Open — taking orders' : 'Closed'}</div>
-            </div>
-            <button onClick={toggleShop} disabled={shopOpen == null} aria-label="Toggle shop"
-              style={{ ...styles.switch, background: shopOpen ? 'var(--success)' : '#ccc' }}>
-              <span style={{ ...styles.knob, transform: shopOpen ? 'translateX(20px)' : 'none' }} />
-            </button>
-          </div>
-          <div style={styles.controlCard}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Notifications</div>
-              <div style={ui.muted}>
-                {needsInstallForPush ? 'Install the app first (iPhone requirement)'
-                  : { granted: 'On for this device', denied: 'Blocked — allow in browser/phone settings', unsupported: 'Not supported in this browser', prompt: 'Off for this device', idle: '…' }[pushState]}
-              </div>
-            </div>
-            {needsInstallForPush ? <Button small variant="ghost" onClick={() => setShowInstall(true)}>How?</Button>
-              : pushState === 'prompt' ? <Button small onClick={onEnablePush}>Turn on</Button>
-              : pushState === 'granted' ? <Button small variant="ghost" onClick={testPush}>Test</Button> : null}
-          </div>
-          <div style={styles.controlCard}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Studio app</div>
-              <div style={ui.muted}>{installMode === 'installed' ? 'Installed on this device ✓' : 'Add the dashboard to your home screen / dock'}</div>
-            </div>
-            {installMode !== 'installed' && (
-              <Button small onClick={async () => { if (installMode === 'prompt') { await install() } else setShowInstall(true) }}>Install</Button>
-            )}
-          </div>
+        {/* Shop open/closed */}
+        <div style={styles.shopRow}>
+          <span><strong>Shop</strong> <span style={ui.muted}>· {shopOpen == null ? '…' : shopOpen ? 'Open — taking orders' : 'Closed'}</span></span>
+          <button onClick={toggleShop} disabled={shopOpen == null} role="switch" aria-checked={!!shopOpen} aria-label="Shop open"
+            style={{ ...styles.switch, background: shopOpen ? 'var(--success)' : '#ccc' }}>
+            <span style={{ ...styles.knob, transform: shopOpen ? 'translateX(20px)' : 'none' }} />
+          </button>
         </div>
-        {showInstall && <InstallHelp mode={installMode} onClose={() => setShowInstall(false)} />}
 
-        {/* Filters */}
-        <div style={styles.tabs} className="scroll-x">
+        {/* Status filters — a grid, so every status is visible without scrolling */}
+        <div className="dash-tabs" style={styles.tabs}>
           {FILTER_TABS.map(t => {
-            const n = t.key === 'inbox' ? (inbox || []).filter(m => !m.read_at).length : t.badge ? counts[t.key] || 0 : 0
+            const n = t.key === 'queue' ? queueCount : t.badge ? counts[t.key] || 0 : 0
             const on = filter === t.key
             return (
               <button key={t.key} onClick={() => setFilter(t.key)} style={{ ...styles.tab, ...(on ? styles.tabOn : {}) }}>
@@ -203,75 +128,9 @@ export default function Dashboard() {
           })}
         </div>
 
-        {!['appque', 'inbox'].includes(filter) && (
-          <input placeholder="Search name, email, product, PO…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...ui.input, marginBottom: 12 }} />
-        )}
+        <input placeholder="Search name, email, product, PO…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...ui.input, marginBottom: 12 }} />
 
-        {filter === 'inbox' ? (
-          inbox === null ? <Loading /> : inbox.length === 0 ? (
-            <Empty text="No customer replies yet. When customers reply to your emails, they'll show up here (and in your inbox)." />
-          ) : (
-            <div className="order-grid">
-              {inbox.map(m => {
-                const order = (orders || []).find(o => o.id === m.order_id)
-                const unread = !m.read_at
-                return (
-                  <button key={m.id} onClick={() => m.order_id ? navigate(`/dashboard/order/${m.order_id}`) : setOpenAppque(openAppque === m.id ? null : m.id)}
-                    style={{ ...ui.card, ...styles.orderCard, ...(unread ? { borderColor: 'var(--primary)' } : {}) }}>
-                    <div style={styles.cardTop}>
-                      <div style={{ minWidth: 0, textAlign: 'left' }}>
-                        <div style={{ ...styles.name, fontWeight: unread ? 800 : 600 }}>{unread && <span style={styles.dot} />}{order?.customer_name || m.from_email}</div>
-                        <div style={{ ...styles.product, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.subject}</div>
-                      </div>
-                      <span style={ui.muted}>{new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                    </div>
-                    <div style={{ ...styles.meta, marginTop: 6 }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{(m.body_text || '').slice(0, 120)}</span>
-                      {m.attachment_urls?.length > 0 && <span style={styles.pill}>📎 {m.attachment_urls.length}</span>}
-                      {order ? <span style={styles.pill}>{order.product_type}</span> : <span style={styles.pill}>No matching order</span>}
-                    </div>
-                    {!m.order_id && openAppque === m.id && <p style={{ whiteSpace: 'pre-wrap', fontSize: 14, marginTop: 10, textAlign: 'left' }}>{m.body_text}</p>}
-                  </button>
-                )
-              })}
-            </div>
-          )
-        ) : filter === 'appque' ? (
-          appque === null ? <Loading /> : appque.length === 0 ? <Empty text="No AppQue submissions yet." /> : (
-            <div className="order-grid">
-              {appque.map(a => (
-                <div key={a.id} style={ui.card}>
-                  <div style={styles.cardTop} onClick={() => setOpenAppque(openAppque === a.id ? null : a.id)}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={styles.name}>{a.client_name}</div>
-                      <div style={ui.muted}>{a.client_email} · {new Date(a.created_at).toLocaleDateString()}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {a.tier && <Badge color={TIER_COLORS[a.tier]} bg="var(--card2)">{a.tier}</Badge>}
-                      {a.estimated_price != null && <strong style={{ fontSize: 14 }}>{fmt(a.estimated_price)}</strong>}
-                    </div>
-                  </div>
-                  {openAppque === a.id && (
-                    <div style={{ marginTop: 14, fontSize: 14, lineHeight: 1.6 }}>
-                      <p style={{ whiteSpace: 'pre-wrap', marginBottom: 10 }}>{a.description}</p>
-                      {(a.questions || []).map((q, i) => (
-                        <div key={i} style={{ marginBottom: 8 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{q}</div>
-                          <div style={{ color: 'var(--mid)' }}>{a.answers?.[i] || '—'}</div>
-                        </div>
-                      ))}
-                      <div style={{ ...ui.row, alignItems: 'center', marginTop: 10 }}>
-                        <span style={ui.muted}>Status</span>
-                        <Select value={a.status || 'new'} onChange={e => setAppqueStatus(a.id, e.target.value)} options={APPQUE_STATUSES} style={{ maxWidth: 200, padding: '8px 10px' }} />
-                        {a.client_phone && <a href={`tel:${a.client_phone}`}>{a.client_phone}</a>}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )
-        ) : orders === null ? <Loading /> : visible.length === 0 ? (
+        {orders === null ? <Loading /> : visible.length === 0 ? (
           <Empty text={filter === 'queue' ? 'Queue is clear — nothing needs your hands right now. ✨' : 'No orders here.'} />
         ) : (
           <div className="order-grid">
@@ -310,37 +169,21 @@ function dueColor(d) {
   return days < 2 ? 'var(--danger)' : days < 5 ? 'var(--warning)' : 'var(--muted)'
 }
 
-// Step-by-step install instructions for devices without a one-tap install prompt.
-function InstallHelp({ mode, onClose }) {
-  const steps = mode === 'ios'
-    ? ['Open this page in Safari (not Chrome or an in-app browser).', 'Tap the Share button (square with an arrow).', 'Scroll and tap “Add to Home Screen”, then “Add”.', `Open the new ${BRAND.shortName} icon, sign in once, then tap “Turn on” under Notifications.`]
-    : [`Chrome / Edge on a computer: click the install icon at the right end of the address bar (or ⋮ menu → “Install ${BRAND.shortName}…”).`, 'Android: ⋮ menu → “Install app” or “Add to Home screen”.', 'Open the installed app, then tap “Turn on” under Notifications.']
-  return (
-    <Modal title="Install the studio app" onClose={onClose}>
-      <ol style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 10, fontSize: 15, lineHeight: 1.6 }}>
-        {steps.map((t, i) => <li key={i}>{t}</li>)}
-      </ol>
-      <p style={{ ...ui.hint, marginTop: 14 }}>The app opens straight to your dashboard, works full-screen, and can show new-order, payment and reply alerts.</p>
-      <Button block onClick={onClose} style={{ marginTop: 16 }}>Got it</Button>
-    </Modal>
-  )
-}
-
 const Empty = ({ text }) => <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)', padding: 36 }}>{text}</div>
 
 const styles = {
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 },
   signOut: { fontSize: 12, fontWeight: 600, color: 'var(--muted)', background: 'none', border: '1px solid var(--border)', borderRadius: 20, padding: '6px 12px', cursor: 'pointer' },
-  pipeline: { display: 'flex', gap: 10, marginBottom: 14, paddingBottom: 2 },
-  stat: { flex: '1 0 92px', background: 'var(--card)', borderRadius: 14, padding: '12px 12px', border: '1px solid var(--border)' },
-  statNum: { fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' },
+  pipeline: { marginBottom: 12 },
+  stat: { background: 'var(--card)', borderRadius: 14, padding: '10px 12px', border: '1px solid var(--border)', minWidth: 0 },
+  statNum: { fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' },
   statLabel: { fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 },
-  controls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 16 },
-  controlCard: { ...ui.card, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  shopRow: { ...ui.card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12, fontSize: 14 },
+  iconBtn: { width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card)' },
   switch: { width: 46, height: 26, borderRadius: 26, border: 'none', position: 'relative', cursor: 'pointer', padding: 3, flexShrink: 0, transition: 'background .2s' },
   knob: { display: 'block', width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'transform .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' },
-  tabs: { display: 'flex', gap: 8, marginBottom: 12, paddingBottom: 2 },
-  tab: { flexShrink: 0, padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)', display: 'flex', alignItems: 'center', gap: 6 },
+  tabs: { marginBottom: 12 },
+  tab: { padding: '8px 6px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, whiteSpace: 'nowrap', minWidth: 0 },
   tabOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
   tabBadge: { background: 'var(--primary)', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 800, padding: '1px 6px' },
   list: { display: 'flex', flexDirection: 'column', gap: 10 },

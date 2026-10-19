@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, uploadFile } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { BRAND, BULK_TIERS, COLLECTIONS, STICKER_BAR, getBulkTier } from '../brand'
-import { cartTotals, normalizeTiers, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker } from '../lib/cart'
+import { BRAND, COLLECTIONS, STICKER_BAR } from '../brand'
+import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker } from '../lib/cart'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 
@@ -35,8 +35,8 @@ export default function ShopProducts() {
     const unit = unitPrice(product, format)
     return { ...c, format, quantity, product, unit, total: round2(unit * quantity) }
   })
-  const stackTiers = normalizeTiers(settings.sticker_bar_tiers)
-  const stickerCount = lines.filter(l => isSticker(l.product)).reduce((s, l) => s + l.quantity, 0)
+  const stackTiers = tiersFromSettings(settings)
+  const stackCount = lines.filter(l => l.product.bulk_pricing_enabled !== false).reduce((s, l) => s + l.quantity, 0)
   const count = lines.reduce((s, l) => s + l.quantity, 0)
   const selected = params.get('p') ? byId[params.get('p')] : null
   // Filters live in the URL (?c=labs, ?c=digital) so collection links can be shared like her Payhip ones.
@@ -108,15 +108,9 @@ export default function ShopProducts() {
             <div style={ui.muted}>{settings.shop_closed_message || 'Check back soon!'}</div>
           </div>
         )}
-        {stickerView || (active.key === 'all' && all.some(isSticker)) ? (
-          <div style={styles.bulkStrip}>
-            ♡ {STICKER_BAR.name} Stack & Save — mix any sheets: {stackTiers.slice().reverse().map(t => `${t.min}+ = ${t.pct}% off`).join(' · ')}
-          </div>
-        ) : (
-          <div style={styles.bulkStrip}>
-            ♡ Bulk savings: {BULK_TIERS.slice().reverse().map(t => `${t.min}+ = ${t.badge}`).join(' · ')}
-          </div>
-        )}
+        <div style={styles.bulkStrip}>
+          ♡ Stack & Save — mix anything: {stackTiers.slice().reverse().map(t => `${t.min}+ items = ${t.pct}% off`).join(' · ')}
+        </div>
         {Number(settings.shop_free_shipping_over) > 0 && (
           <div style={{ ...ui.hint, textAlign: 'center', marginTop: -8, marginBottom: 16 }}>📦 Free shipping on orders over {fmt(settings.shop_free_shipping_over)}</div>
         )}
@@ -172,7 +166,7 @@ export default function ShopProducts() {
         </button>
       )}
 
-      {selected && <ProductModal product={selected} cartQty={count} stickerCount={stickerCount} stackTiers={stackTiers} settings={settings}
+      {selected && <ProductModal product={selected} stackCount={stackCount} stackTiers={stackTiers} settings={settings}
         onClose={() => setParam('p', null)} onAdd={add} disabled={!shopOpen} />}
       {cartOpen && <CartModal lines={lines} settings={settings} stackTiers={stackTiers} shopOpen={shopOpen} onClose={() => setCartOpen(false)}
         setQty={(key, q) => setCart(prev => q <= 0 ? prev.filter(c => c.key !== key) : prev.map(c => c.key === key ? { ...c, quantity: q } : c))}
@@ -228,7 +222,7 @@ function ComingSoon({ collection, onBrowse }) {
   )
 }
 
-function ProductModal({ product, cartQty, stickerCount, stackTiers, settings, onClose, onAdd, disabled }) {
+function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAdd, disabled }) {
   const both = offersPhysical(product) && offersDigital(product)
   const soldOut = product.kind !== 'digital' && product.stock != null && product.stock <= 0
   const [format, setFormat] = useState(product.kind === 'digital' || (both && soldOut) ? 'digital' : 'physical')
@@ -240,8 +234,7 @@ function ProductModal({ product, cartQty, stickerCount, stackTiers, settings, on
   const price = unitPrice(product, format)
   const maxQty = product.stock != null ? Math.max(0, product.stock) : 10000
   const unavailable = !isDigital && soldOut
-  const nextTier = getBulkTier(cartQty + qty)
-  const nextStack = tierFor(stackTiers, stickerCount + (isDigital ? 1 : qty))
+  const nextStack = tierFor(stackTiers, stackCount + (isDigital ? 1 : qty))
   const shipNote = Number(settings.shop_free_shipping_over) > 0 ? ` Free shipping over ${fmt(settings.shop_free_shipping_over)}.` : ''
   return (
     <Modal title={product.name} onClose={onClose}>
@@ -301,31 +294,19 @@ function ProductModal({ product, cartQty, stickerCount, stackTiers, settings, on
       </>
       )}
 
-      {product.bulk_pricing_enabled !== false && (sticker ? (
+      {product.bulk_pricing_enabled !== false && (
         <div style={styles.bulkTable}>
           {stackTiers.slice().reverse().map(t => {
             const hit = nextStack?.min === t.min
             return (
               <div key={t.min} style={{ ...styles.bulkRow, ...(hit ? { background: 'rgba(22,163,74,0.08)', fontWeight: 700 } : {}) }}>
-                <span>{t.min}+ sheets</span><span style={{ color: hit ? 'var(--success)' : 'var(--muted)' }}>{t.pct}% off</span>
+                <span>{t.min}+ items</span><span style={{ color: hit ? 'var(--success)' : 'var(--muted)' }}>{t.pct}% off</span>
               </div>
             )
           })}
-          <div style={{ ...ui.hint, padding: '6px 12px' }}>Stack & Save: mix any sheets and formats — the discount applies automatically.</div>
+          <div style={{ ...ui.hint, padding: '6px 12px' }}>Stack & Save: mix any products and formats — the discount applies automatically.</div>
         </div>
-      ) : !isDigital && (
-        <div style={styles.bulkTable}>
-          {BULK_TIERS.slice().reverse().map(t => {
-            const hit = nextTier?.min === t.min
-            return (
-              <div key={t.min} style={{ ...styles.bulkRow, ...(hit ? { background: 'rgba(22,163,74,0.08)', fontWeight: 700 } : {}) }}>
-                <span>{t.label}</span><span style={{ color: hit ? 'var(--success)' : 'var(--muted)' }}>{t.badge}</span>
-              </div>
-            )
-          })}
-          <div style={{ ...ui.hint, padding: '6px 12px' }}>Bulk discounts count all eligible items in your cart.</div>
-        </div>
-      ))}
+      )}
       <Button block disabled={disabled || unavailable} onClick={() => onAdd(product, option, qty, format)} style={{ marginTop: 14 }}>
         {disabled ? 'Shop is closed' : unavailable ? 'Sold out' : `Add to cart · ${fmt(price * (isDigital ? 1 : qty))}`}
       </Button>
@@ -338,6 +319,7 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
   const [code, setCode] = useState('')
   const [discount, setDiscount] = useState(null)
   const [codeMsg, setCodeMsg] = useState('')
+  const [showCode, setShowCode] = useState(false)
   const [f, setF] = useState({ name: '', email: '', phone: '', fulfillment: 'pickup', street: '', street2: '', city: '', state: '', zip: '', notes: '' })
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -351,7 +333,7 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
   const fee = Number(settings.shop_shipping_fee) || 0
   const freeOver = Number(settings.shop_free_shipping_over) || 0
   const t = cartTotals(
-    lines.map(l => ({ itemTotal: l.total, quantity: l.quantity, bulkEligible: l.product.bulk_pricing_enabled !== false, sticker: isSticker(l.product) })),
+    lines.map(l => ({ itemTotal: l.total, quantity: l.quantity, bulkEligible: l.product.bulk_pricing_enabled !== false })),
     {
       stackTiers,
       code: discount && { discount_type: discount.type, discount_value: discount.value },
@@ -359,8 +341,8 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
       freeShippingOver: freeOver,
     },
   )
-  const { subtotal, stackTier, stackDiscount, tier, bulkDiscount, codeDiscount, shipping, total } = t
-  const afterBulk = round2(subtotal - stackDiscount - bulkDiscount)
+  const { subtotal, stackTier, stackDiscount, codeDiscount, shipping, total } = t
+  const afterBulk = round2(subtotal - stackDiscount)
   const toFreeShipping = hasPhysical && fee > 0 && freeOver > 0 ? round2(freeOver - t.merchandise) : 0
 
   const applyCode = async () => {
@@ -408,8 +390,7 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
   const totals = (
     <div style={{ background: 'var(--card2)', borderRadius: 14, padding: 14, marginTop: 12, fontSize: 14 }}>
       <Line k="Subtotal" v={fmt(subtotal)} />
-      {stackTier && <Line k={`Stack & Save (${stackTier.pct}% off sheets)`} v={`−${fmt(stackDiscount)}`} green />}
-      {tier && <Line k={`Bulk discount (${tier.badge})`} v={`−${fmt(bulkDiscount)}`} green />}
+      {stackTier && <Line k={`Stack & Save (${stackTier.pct}% off)`} v={`−${fmt(stackDiscount)}`} green />}
       {discount && <Line k={`Code ${discount.code}`} v={`−${fmt(codeDiscount)}`} green />}
       {shipping > 0 && <Line k="Shipping" v={fmt(shipping)} />}
       {t.freeShipping && <Line k="Shipping" v="Free 🎉" green />}
@@ -443,10 +424,14 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
           ))}
           {lines.length > 0 && (
             <>
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                <Input placeholder="Discount code" value={code} onChange={e => setCode(e.target.value)} style={{ flex: 1 }} />
-                <Button variant="ghost" small onClick={applyCode} disabled={!code.trim()}>Apply</Button>
-              </div>
+              {showCode || discount ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                  <Input placeholder="Discount code" value={code} autoFocus={!discount} onChange={e => setCode(e.target.value)} style={{ flex: 1 }} />
+                  <Button variant="ghost" small onClick={applyCode} disabled={!code.trim()}>Apply</Button>
+                </div>
+              ) : (
+                <button onClick={() => setShowCode(true)} style={styles.addCode}>+ Add a discount code</button>
+              )}
               {codeMsg && <div style={{ ...ui.hint, color: discount ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</div>}
               {totals}
               <Button block disabled={!shopOpen} onClick={() => setStep('checkout')} style={{ marginTop: 14 }}>
@@ -529,6 +514,7 @@ const styles = {
   digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--primary)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
   ctaPink: { display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, var(--accent), var(--primary))', color: '#fff', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', textDecoration: 'none' },
   ctaGhost: { font: 'inherit', display: 'inline-flex', alignItems: 'center', background: '#fff', color: 'var(--dark)', border: '1px solid var(--border)', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer' },
+  addCode: { background: 'none', border: 'none', padding: '12px 0 0', fontSize: 13, fontWeight: 600, color: 'var(--secondary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 },
   series: { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 2 },
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   formatBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '12px 8px', borderRadius: 14, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', font: 'inherit', color: 'var(--dark)' },

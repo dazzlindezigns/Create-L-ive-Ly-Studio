@@ -1,7 +1,7 @@
 // Shop cart math shared by the browser (display) and api/_lib/pricing.js (what is charged).
 // Keep it pure — the server always re-prices from the products table before charging.
 import { round2 } from './money.js'
-import { getBulkTier, STICKER_BAR } from '../brand.js'
+import { STACK_TIERS, STICKER_BAR } from '../brand.js'
 
 const sum = (arr, fn) => arr.reduce((s, x) => s + fn(x), 0)
 
@@ -11,8 +11,11 @@ export function normalizeTiers(raw) {
     .map(t => ({ min: parseInt(t?.min, 10), pct: Number(t?.pct) }))
     .filter(t => t.min >= 2 && t.pct > 0 && t.pct <= 90)
     .slice(0, 6)
-  return (list.length ? list : STICKER_BAR.stackTiers).slice().sort((a, b) => b.min - a.min)
+  return (list.length ? list : STACK_TIERS).slice().sort((a, b) => b.min - a.min)
 }
+
+// Saved tiers from the settings table (older installs saved them as sticker_bar_tiers).
+export const tiersFromSettings = (s = {}) => normalizeTiers(s.stack_save_tiers ?? s.sticker_bar_tiers)
 
 export const tierFor = (tiers, qty) => normalizeTiers(tiers).find(t => qty >= t.min) || null
 
@@ -36,20 +39,15 @@ export function discountAmount(code, base) {
     : round2(Math.min(v, base))
 }
 
-// lines: [{ itemTotal, quantity, bulkEligible, sticker }]
-// Sticker Bar sheets (both formats) count toward Stack & Save; everything else toward the bulk tiers.
+// lines: [{ itemTotal, quantity, bulkEligible }]
+// Stack & Save: every eligible item in the cart (any product, any format) counts toward one tier.
 export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, freeShippingOver = 0 } = {}) {
   const subtotal = round2(sum(lines, l => l.itemTotal))
-  const eligible = lines.filter(l => l.bulkEligible)
-  const stack = eligible.filter(l => l.sticker)
-  const bulk = eligible.filter(l => !l.sticker)
-
+  const stack = lines.filter(l => l.bulkEligible)
   const stackTier = tierFor(stackTiers, sum(stack, l => l.quantity))
   const stackDiscount = stackTier ? round2(sum(stack, l => l.itemTotal) * stackTier.pct / 100) : 0
-  const tier = getBulkTier(sum(bulk, l => l.quantity))
-  const bulkDiscount = tier ? round2(sum(bulk, l => l.itemTotal) * tier.pct / 100) : 0
 
-  const afterTiers = round2(subtotal - stackDiscount - bulkDiscount)
+  const afterTiers = round2(subtotal - stackDiscount)
   const codeDiscount = discountAmount(code, afterTiers)
   const merchandise = round2(afterTiers - codeDiscount)
 
@@ -58,5 +56,5 @@ export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, fr
   const freeShipping = fee > 0 && threshold > 0 && merchandise >= threshold
   const shipping = freeShipping ? 0 : fee
   const total = Math.max(0, round2(merchandise + shipping))
-  return { subtotal, stackTier, stackDiscount, tier, bulkDiscount, codeDiscount, merchandise, freeShipping, shipping, total }
+  return { subtotal, stackTier, stackDiscount, codeDiscount, merchandise, freeShipping, shipping, total }
 }

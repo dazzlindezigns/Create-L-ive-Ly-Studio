@@ -41,6 +41,8 @@ export default async function handler(req, res) {
   if (serverKey.role && serverKey.role !== 'service_role') problems.push(`SUPABASE_SERVICE_ROLE_KEY is the "${serverKey.role}" key. Use the service_role (secret) key.`)
   if (serverKey.type?.startsWith('publishable')) problems.push('SUPABASE_SERVICE_ROLE_KEY is the publishable key. Use the secret key.')
   if (serverKey.project && project && serverKey.project !== project) problems.push(`SUPABASE_SERVICE_ROLE_KEY belongs to project "${serverKey.project}" but the URL is project "${project}".`)
+  const missingPush = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'].filter(k => !process.env[k])
+  if (missingPush.length) problems.push(`Notifications need ${missingPush.join(', ')} in Vercel.`)
   if (!browserKey.set) problems.push('VITE_SUPABASE_ANON_KEY is not set.')
   if (browserKey.extraSpacesOrQuotes) problems.push('VITE_SUPABASE_ANON_KEY has extra spaces or quote marks around it.')
   if (browserKey.role && browserKey.role !== 'anon') problems.push(`VITE_SUPABASE_ANON_KEY is the "${browserKey.role}" key. Use the anon (publishable) key — never the secret one in the browser.`)
@@ -69,6 +71,7 @@ export default async function handler(req, res) {
     serverKey: { set: serverKey.set, type: serverKey.type, project: serverKey.project },
     browserKey: { set: browserKey.set, type: browserKey.type, project: browserKey.project },
     database,
+    notifications: missingPush.length ? 'not set up' : 'keys set',
     note: 'Changing Vercel environment variables only takes effect after a redeploy. VITE_ variables are built into the site, so they need a redeploy too.',
   })
 }

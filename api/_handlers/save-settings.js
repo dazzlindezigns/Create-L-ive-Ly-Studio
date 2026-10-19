@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   const { key } = req.body || {}
   let { value } = req.body || {}
   if (!PUBLIC_KEYS.includes(key)) throw new HttpError(400, 'Unknown setting')
-  if (key === 'sticker_bar_tiers') value = normalizeTiers(value).reverse()
+  if (key === 'stack_save_tiers' || key === 'sticker_bar_tiers') value = normalizeTiers(value).reverse()
   if (key === 'shop_free_shipping_over' || key === 'shop_shipping_fee') value = Math.max(0, Number(value) || 0)
   const { error } = await db().from('settings').upsert({ key, value })
   if (error) throw new HttpError(500, error.message)

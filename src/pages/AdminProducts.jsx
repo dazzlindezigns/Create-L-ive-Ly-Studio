@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { COLLECTIONS, STICKER_BAR } from '../brand'
-import { normalizeTiers } from '../lib/cart'
+import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE } from '../brand'
+import { normalizeTiers, tiersFromSettings } from '../lib/cart'
 import Nav from '../components/Nav'
-import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash, Badge } from '../components/ui'
+import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash } from '../components/ui'
 
 const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
 const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', bulk_pricing_enabled: false }
@@ -26,16 +26,27 @@ export default function AdminProducts() {
     const [{ data: p }, { data: c }, s] = await Promise.all([
       supabase.from('products').select('*').order('sort_order').order('created_at'),
       supabase.from('discount_codes').select('*').order('created_at', { ascending: false }),
-      api('get-settings').catch(() => ({})),
+      supabase.from('settings').select('key, value'),
     ])
-    setProducts(p || []); setCodes(c || []); setSettings(s)
+    setProducts(p || []); setCodes(c || []); setSettings(Object.fromEntries((s.data || []).map(r => [r.key, r.value])))
   }
   useEffect(() => { load() }, [])
 
-  const saveSetting = async (key, value) => {
-    try { await api('save-settings', { body: { key, value }, auth: true }); setSettings(s => ({ ...s, [key]: value })); flash('Saved') }
-    catch (e) { flash(e.message, 'error') }
+  // Settings are written straight to Supabase as the signed-in admin (RLS allows it).
+  const saveSetting = async (key, raw) => {
+    const value = key === 'stack_save_tiers' ? normalizeTiers(raw).reverse()
+      : ['shop_shipping_fee', 'shop_free_shipping_over'].includes(key) ? Math.max(0, Number(raw) || 0) : raw
+    const { error } = await supabase.from('settings').upsert({ key, value })
+    if (error) return flash(error.message, 'error')
+    setSettings(s => ({ ...s, [key]: value })); flash('Saved')
   }
+
+  // Products grouped under their collection; anything without one goes last.
+  const groups = [
+    ...COLLECTIONS.map(c => ({ key: c.key, name: c.name, items: products?.filter(p => p.collection === c.key) || [] })),
+    { key: '', name: 'No collection', items: products?.filter(p => !COLLECTIONS.some(c => c.key === p.collection)) || [] },
+  ].filter(g => g.key || g.items.length)
+  const blankFor = (key) => key === STICKER_BAR.collection ? BLANK_SHEET : key === 'paper-studio' ? BLANK_DIGITAL : { ...BLANK, collection: key }
 
   if (!products) return <div style={ui.page} className="admin-page"><Loading /><Nav /></div>
 
@@ -59,33 +70,23 @@ export default function AdminProducts() {
           <Button small variant="ghost" onClick={() => navigator.clipboard.writeText(`${APP_URL}/shop/products`).then(() => flash('Shop link copied'))}>Copy</Button>
         </div>
 
-        {products.length === 0 && <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)' }}>No products yet. Add your first one!</div>}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {products.map(p => (
-            <button key={p.id} onClick={() => setEditing(toForm(p))} style={{ ...ui.card, ...styles.row }}>
-              {p.image_urls?.[0] ? <img src={p.image_urls[0]} alt="" style={styles.thumb} /> : <div style={{ ...styles.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</div>}
-              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                <div style={{ fontWeight: 700 }}>{p.name}</div>
-                <div style={ui.muted}>
-                  {fmt(p.price)}{p.kind !== 'digital' && p.digital_price != null && ` · ${fmt(p.digital_price)} digital`}
-                  {p.collection && ` · ${COLLECTIONS.find(c => c.key === p.collection)?.name || p.collection}`}
-                  {p.series && ` · ${p.series}`}
-                  {p.kind === 'digital' ? ` · ${p.digital_file_name || 'no file uploaded'}` : p.options?.length ? ` · ${p.options.length} options` : ''}
-                  {p.kind !== 'digital' && p.stock != null && ` · ${p.stock} in stock`}
-                </div>
+        {groups.map(g => (
+          <section key={g.key || 'none'}>
+            <div style={styles.groupHead}>
+              <h2 style={{ ...ui.h2, marginBottom: 0 }}>{g.name} <span style={styles.count}>{g.items.length}</span></h2>
+              <button onClick={() => setEditing(blankFor(g.key))} style={styles.groupAdd}>+ Add</button>
+            </div>
+            {g.items.length === 0 ? (
+              <div style={styles.emptyGroup}>Nothing here yet.</div>
+            ) : (
+              <div style={styles.list}>
+                {g.items.map(p => <ProductRow key={p.id} p={p} onClick={() => setEditing(toForm(p))} />)}
               </div>
-              {p.kind === 'digital' && <Badge color="var(--primary)" bg="var(--card2)">Digital</Badge>}
-              {p.kind !== 'digital' && p.digital_price != null && <Badge color="var(--primary)" bg="var(--card2)">+ Digital</Badge>}
-              {(p.kind === 'digital' || p.digital_price != null) && !p.digital_file_path && <Badge color="var(--danger)" bg="rgba(220,38,38,0.08)">Needs file</Badge>}
-              {p.kind !== 'digital' && p.stock != null && p.stock <= LOW_STOCK && (
-                <Badge color={p.stock ? 'var(--warning)' : 'var(--danger)'} bg="rgba(199,128,43,0.1)">{p.stock ? 'Low stock' : 'Sold out'}</Badge>
-              )}
-              {!p.active && <Badge color="#888" bg="rgba(0,0,0,0.06)">Hidden</Badge>}
-            </button>
-          ))}
-        </div>
+            )}
+          </section>
+        ))}
 
-        <StackTiers key={JSON.stringify(settings.sticker_bar_tiers ?? null)} value={settings.sticker_bar_tiers} onSave={v => saveSetting('sticker_bar_tiers', v)} />
+        <StackTiers key={JSON.stringify(tiersFromSettings(settings))} value={tiersFromSettings(settings)} onSave={v => saveSetting('stack_save_tiers', v)} />
 
         <DiscountCodes codes={codes} reload={load} flash={flash} />
 
@@ -93,7 +94,8 @@ export default function AdminProducts() {
           <h2 style={ui.h2}>Shop settings</h2>
           <SettingField label="Flat shipping fee ($)" type="number" value={settings.shop_shipping_fee ?? 0} onSave={v => saveSetting('shop_shipping_fee', Number(v) || 0)} />
           <SettingField label="Free shipping when the order is at least ($) — 0 turns it off" type="number" value={settings.shop_free_shipping_over ?? 0} onSave={v => saveSetting('shop_free_shipping_over', Number(v) || 0)} />
-          <SettingField label="Message when shop is closed" value={settings.shop_closed_message || ''} onSave={v => saveSetting('shop_closed_message', v)} />
+          <SettingField label="Message when shop is closed" multiline value={settings.shop_closed_message || ''} onSave={v => saveSetting('shop_closed_message', v)}
+            template={SHOP_CLOSED_TEMPLATE} />
           <SettingField label="In-person payment instructions (shown on quotes)" value={settings.in_person_payment_note || ''} onSave={v => saveSetting('in_person_payment_note', v)} />
           <p style={ui.hint}>Open/close the shop from the Orders dashboard.</p>
         </section>
@@ -106,7 +108,38 @@ export default function AdminProducts() {
   )
 }
 
-// Sticker Bar "Stack & Save": % off every sheet once the cart has N+ sheets (any mix of sheets and formats).
+// One compact list row: photo, name, price, then status chips on their own line so nothing gets squeezed.
+function ProductRow({ p, onClick }) {
+  const both = p.kind !== 'digital' && p.digital_price != null
+  const chips = [
+    !p.active && ['Hidden', 'var(--muted)', 'rgba(0,0,0,0.06)'],
+    p.kind === 'digital' && ['Digital', 'var(--primary)', 'var(--card2)'],
+    both && ['Vinyl + digital', 'var(--primary)', 'var(--card2)'],
+    (p.kind === 'digital' || both) && !p.digital_file_path && ['Needs file', 'var(--danger)', 'rgba(200,65,75,0.08)'],
+    p.kind !== 'digital' && p.stock != null && p.stock <= LOW_STOCK && [p.stock ? `${p.stock} left` : 'Sold out', p.stock ? 'var(--warning)' : 'var(--danger)', 'rgba(199,128,43,0.1)'],
+    p.badge && [p.badge, 'var(--secondary)', 'var(--card2)'],
+  ].filter(Boolean)
+  return (
+    <button onClick={onClick} style={styles.row}>
+      {p.image_urls?.[0] ? <img src={p.image_urls[0]} alt="" style={styles.thumb} /> : <div style={{ ...styles.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</div>}
+      <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+        <div style={styles.rowName}>{p.name}</div>
+        <div style={{ ...ui.muted, marginTop: 2 }}>
+          {fmt(p.price)}{both && ` · ${fmt(p.digital_price)} digital`}{p.series && ` · ${p.series}`}
+          {p.kind !== 'digital' && p.stock != null && p.stock > LOW_STOCK && ` · ${p.stock} in stock`}
+        </div>
+        {chips.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+            {chips.map(([label, color, bg]) => <span key={label} style={{ ...styles.chipTag, color, background: bg }}>{label}</span>)}
+          </div>
+        )}
+      </div>
+      <span style={{ color: 'var(--muted)', fontSize: 20, flexShrink: 0 }}>›</span>
+    </button>
+  )
+}
+
+// "Stack & Save": % off every eligible item once the cart holds N+ of them (any products, any formats).
 function StackTiers({ value, onSave }) {
   // Remounted (via key) when the saved value changes, so local edits start from it.
   const initial = () => normalizeTiers(value).slice().reverse()
@@ -115,8 +148,8 @@ function StackTiers({ value, onSave }) {
   const changed = JSON.stringify(tiers) !== JSON.stringify(initial())
   return (
     <section style={ui.card}>
-      <h2 style={ui.h2}>{STICKER_BAR.name} Stack & Save</h2>
-      <p style={{ ...ui.muted, marginBottom: 12 }}>Sheets in the {STICKER_BAR.name} collection get this discount when customers mix several — digital and vinyl both count.</p>
+      <h2 style={ui.h2}>Stack & Save</h2>
+      <p style={{ ...ui.muted, marginBottom: 12 }}>Customers get this discount when they mix several items from anywhere in the shop. Untick “Counts toward Stack & Save” on a product to leave it out.</p>
       {tiers.map((t, i) => (
         <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
           <Field label="Buy at least"><Input type="number" min={2} value={t.min} onChange={e => set(i, 'min', e.target.value)} /></Field>
@@ -132,12 +165,15 @@ function StackTiers({ value, onSave }) {
   )
 }
 
-function SettingField({ label, value, onSave, type = 'text' }) {
+function SettingField({ label, value, onSave, type = 'text', multiline, template }) {
   const [v, setV] = useState(value)
   useEffect(() => setV(value), [value])
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
-      <Field label={label}><Input type={type} value={v} onChange={e => setV(e.target.value)} /></Field>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12, flexWrap: 'wrap' }}>
+      <Field label={label} style={{ flex: 1, minWidth: 220 }}
+        hint={template && v !== template ? <button type="button" onClick={() => setV(template)} style={styles.useTemplate}>Use the template message</button> : null}>
+        {multiline ? <TextArea rows={3} value={v} onChange={e => setV(e.target.value)} /> : <Input type={type} value={v} onChange={e => setV(e.target.value)} />}
+      </Field>
       {String(v) !== String(value) && <Button small onClick={() => onSave(v)}>Save</Button>}
     </div>
   )
@@ -472,8 +508,16 @@ function DiscountCodes({ codes, reload, flash }) {
 }
 
 const styles = {
-  row: { display: 'flex', alignItems: 'center', gap: 12, padding: 12, cursor: 'pointer', width: '100%', font: 'inherit', color: 'inherit' },
-  thumb: { width: 64, height: 64, borderRadius: 10, objectFit: 'cover', background: 'var(--card2)', flexShrink: 0 },
+  groupHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, margin: '4px 2px 8px' },
+  count: { fontFamily: "'Montserrat', Arial, sans-serif", fontSize: 12, fontWeight: 700, color: 'var(--muted)', background: 'var(--card2)', borderRadius: 10, padding: '2px 8px', verticalAlign: 'middle' },
+  groupAdd: { background: 'none', border: 'none', fontSize: 13, fontWeight: 700, color: 'var(--secondary)', cursor: 'pointer', padding: 4 },
+  emptyGroup: { ...ui.card, padding: '14px 16px', color: 'var(--muted)', fontSize: 13 },
+  list: { ...ui.card, padding: 0, overflow: 'hidden' },
+  row: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', cursor: 'pointer', width: '100%', font: 'inherit', color: 'inherit', background: 'none', border: 'none', borderBottom: '1px solid var(--border)' },
+  rowName: { fontWeight: 700, fontSize: 14.5, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' },
+  chipTag: { fontSize: 10.5, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', borderRadius: 6, padding: '2px 7px', whiteSpace: 'nowrap' },
+  useTemplate: { background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--secondary)', cursor: 'pointer', textDecoration: 'underline' },
+  thumb: { width: 56, height: 56, borderRadius: 10, objectFit: 'cover', background: 'var(--card2)', flexShrink: 0 },
   x: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'var(--dark)', color: '#fff', cursor: 'pointer' },
   check: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer' },
   toggle: { display: 'flex', background: 'var(--card2)', borderRadius: 50, padding: 4, gap: 4 },

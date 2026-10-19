@@ -8,6 +8,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import OrderDetail from './pages/OrderDetail'
 import Calculator from './pages/Calculator'
+import Inbox from './pages/Inbox'
 import AdminProducts from './pages/AdminProducts'
 import QuoteReview from './pages/QuoteReview'
 import ProofReview from './pages/ProofReview'
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/dashboard" element={admin(<Dashboard />)} />
         <Route path="/dashboard/order/:id" element={admin(<OrderDetail />)} />
         <Route path="/dashboard/calculator" element={admin(<Calculator />)} />
+        <Route path="/dashboard/inbox" element={admin(<Inbox />)} />
         <Route path="/calculator" element={<Navigate to="/dashboard/calculator" replace />} />
         <Route path="/dashboard/products" element={admin(<AdminProducts />)} />
 
