@@ -32,11 +32,11 @@ export default function AdminProducts() {
     catch (e) { flash(e.message, 'error') }
   }
 
-  if (!products) return <div style={ui.page}><Loading /><Nav /></div>
+  if (!products) return <div style={ui.page} className="admin-page"><Loading /><Nav /></div>
 
   return (
-    <div style={ui.page}>
-      <div style={{ ...ui.wrap, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={ui.page} className="admin-page">
+      <div style={{ ...ui.wrap, maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <div style={ui.eyebrow}>Shop</div>

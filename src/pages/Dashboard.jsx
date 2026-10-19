@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 import { initPush, enablePush } from '../lib/push'
+import { useInstallState, isIOS } from '../lib/pwa'
 import { fmt } from '../lib/money'
 import { QUEUE_PRIORITY, FILTER_TABS, PIPELINE } from '../lib/status'
 import { BRAND } from '../brand'
 import Nav from '../components/Nav'
-import { ui, Badge, Button, Loading, useFlash, Select } from '../components/ui'
+import { ui, Badge, Button, Loading, useFlash, Select, Modal } from '../components/ui'
 
 const TIER_COLORS = { Spark: 'var(--success)', Wire: 'var(--secondary)', Forge: 'var(--plum)' }
 const APPQUE_STATUSES = ['new', 'quoted', 'deposit_paid', 'in_progress', 'completed', 'declined']
@@ -20,6 +21,10 @@ export default function Dashboard() {
   const [filter, setFilter] = useState(() => sessionStorage.getItem('dash-filter') || 'queue')
   const [search, setSearch] = useState('')
   const [pushState, setPushState] = useState('idle')
+  const { mode: installMode, install } = useInstallState()
+  const [showInstall, setShowInstall] = useState(false)
+  // iPhone/iPad only allow web push from an app installed to the home screen.
+  const needsInstallForPush = isIOS() && installMode !== 'installed'
   const [shopOpen, setShopOpen] = useState(null)
   const [openAppque, setOpenAppque] = useState(null)
   const [toast, flash] = useFlash()
@@ -122,14 +127,14 @@ export default function Dashboard() {
   const revenue = (orders || []).reduce((s, o) => s + (Number(o.amount_paid) || 0), 0)
 
   return (
-    <div style={ui.page}>
-      <div style={ui.wrap}>
+    <div style={ui.page} className="admin-page">
+      <div style={{ ...ui.wrap, maxWidth: 1180 }}>
         <header style={styles.header}>
           <div>
             <div style={ui.eyebrow}>{BRAND.name}</div>
             <h1 style={ui.h1}>Orders</h1>
           </div>
-          <button onClick={() => supabase.auth.signOut()} style={styles.signOut}>Sign out</button>
+          <button onClick={() => supabase.auth.signOut()} style={styles.signOut} className="hide-desktop">Sign out</button>
         </header>
 
         {/* Pipeline */}
@@ -165,13 +170,25 @@ export default function Dashboard() {
             <div>
               <div style={{ fontWeight: 700, fontSize: 14 }}>Notifications</div>
               <div style={ui.muted}>
-                {{ granted: 'On for this device', denied: 'Blocked in browser settings', unsupported: 'Install the app to enable', prompt: 'Off', idle: '…' }[pushState]}
+                {needsInstallForPush ? 'Install the app first (iPhone requirement)'
+                  : { granted: 'On for this device', denied: 'Blocked — allow in browser/phone settings', unsupported: 'Not supported in this browser', prompt: 'Off for this device', idle: '…' }[pushState]}
               </div>
             </div>
-            {pushState === 'prompt' && <Button small onClick={onEnablePush}>Enable</Button>}
-            {pushState === 'granted' && <Button small variant="ghost" onClick={testPush}>Test</Button>}
+            {needsInstallForPush ? <Button small variant="ghost" onClick={() => setShowInstall(true)}>How?</Button>
+              : pushState === 'prompt' ? <Button small onClick={onEnablePush}>Turn on</Button>
+              : pushState === 'granted' ? <Button small variant="ghost" onClick={testPush}>Test</Button> : null}
+          </div>
+          <div style={styles.controlCard}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Studio app</div>
+              <div style={ui.muted}>{installMode === 'installed' ? 'Installed on this device ✓' : 'Add the dashboard to your home screen / dock'}</div>
+            </div>
+            {installMode !== 'installed' && (
+              <Button small onClick={async () => { if (installMode === 'prompt') { await install() } else setShowInstall(true) }}>Install</Button>
+            )}
           </div>
         </div>
+        {showInstall && <InstallHelp mode={installMode} onClose={() => setShowInstall(false)} />}
 
         {/* Filters */}
         <div style={styles.tabs} className="scroll-x">
@@ -194,7 +211,7 @@ export default function Dashboard() {
           inbox === null ? <Loading /> : inbox.length === 0 ? (
             <Empty text="No customer replies yet. When customers reply to your emails, they'll show up here (and in your inbox)." />
           ) : (
-            <div style={styles.list}>
+            <div className="order-grid">
               {inbox.map(m => {
                 const order = (orders || []).find(o => o.id === m.order_id)
                 const unread = !m.read_at
@@ -221,7 +238,7 @@ export default function Dashboard() {
           )
         ) : filter === 'appque' ? (
           appque === null ? <Loading /> : appque.length === 0 ? <Empty text="No AppQue submissions yet." /> : (
-            <div style={styles.list}>
+            <div className="order-grid">
               {appque.map(a => (
                 <div key={a.id} style={ui.card}>
                   <div style={styles.cardTop} onClick={() => setOpenAppque(openAppque === a.id ? null : a.id)}>
@@ -257,7 +274,7 @@ export default function Dashboard() {
         ) : orders === null ? <Loading /> : visible.length === 0 ? (
           <Empty text={filter === 'queue' ? 'Queue is clear — nothing needs your hands right now. ✨' : 'No orders here.'} />
         ) : (
-          <div style={styles.list}>
+          <div className="order-grid">
             {visible.map(o => (
               <button key={o.id} onClick={() => navigate(`/dashboard/order/${o.id}`)} style={{ ...ui.card, ...styles.orderCard }}>
                 <div style={styles.cardTop}>
@@ -292,6 +309,22 @@ export default function Dashboard() {
 function dueColor(d) {
   const days = (new Date(d + 'T00:00:00') - new Date()) / 86400000
   return days < 2 ? 'var(--danger)' : days < 5 ? 'var(--warning)' : 'var(--muted)'
+}
+
+// Step-by-step install instructions for devices without a one-tap install prompt.
+function InstallHelp({ mode, onClose }) {
+  const steps = mode === 'ios'
+    ? ['Open this page in Safari (not Chrome or an in-app browser).', 'Tap the Share button (square with an arrow).', 'Scroll and tap “Add to Home Screen”, then “Add”.', `Open the new ${BRAND.shortName} icon, sign in once, then tap “Turn on” under Notifications.`]
+    : [`Chrome / Edge on a computer: click the install icon at the right end of the address bar (or ⋮ menu → “Install ${BRAND.shortName}…”).`, 'Android: ⋮ menu → “Install app” or “Add to Home screen”.', 'Open the installed app, then tap “Turn on” under Notifications.']
+  return (
+    <Modal title="Install the studio app" onClose={onClose}>
+      <ol style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 10, fontSize: 15, lineHeight: 1.6 }}>
+        {steps.map((t, i) => <li key={i}>{t}</li>)}
+      </ol>
+      <p style={{ ...ui.hint, marginTop: 14 }}>The app opens straight to your dashboard, works full-screen, and can show new-order, payment and reply alerts.</p>
+      <Button block onClick={onClose} style={{ marginTop: 16 }}>Got it</Button>
+    </Modal>
+  )
 }
 
 const Empty = ({ text }) => <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)', padding: 36 }}>{text}</div>

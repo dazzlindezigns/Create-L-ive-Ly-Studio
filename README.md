@@ -2,7 +2,7 @@
 
 Custom orders, shop and studio management for Create(L)ive(Ly) Studio — 3D prints (Labs), digital papers (Paper Studio), vendor essentials (Vendors) and empowering merch (Elevate). Modeled on the MakerQue (DCIoS) app.
 
-**Customer side:** custom order form (`/`), quote review with e-sign + Stripe payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
+**Customer side:** website homepage at the main address (`/`) with her collections, Sticker Bar and about sections; custom order form (`/custom`, opened from "Request a custom item" / "Book the Sticker Bar"), quote review with e-sign + Stripe payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
 
 **Admin side** (login required): dashboard with status pipeline, live updates, shop open/closed toggle and push notifications (`/dashboard`), full order management with proofs, payments, shipping/tracking emails and admin-only PO numbers (`/dashboard/order/:id`), AI price calculator + invoices (`/dashboard/calculator`), products with a Claude listing writer and Gemini photo generator, discount codes and shop settings (`/dashboard/products`).
 
@@ -73,6 +73,9 @@ Every order page has an **Emails** section:
 ## AI listing helpers (Shop → product editor)
 - **✨ Write with Claude:** she jots a few notes ("3D printed name keychain, PLA silk, 5 colors"). Claude reads the notes plus the product photos and fills in the title, description and options in the studio's voice, suggests a price, and lists anything a buyer would still need (like exact size). It's told never to invent specs. Everything stays editable before she saves. Code: `api/_handlers/write-listing.js`.
 - **🎨 Create listing photos with Gemini:** pick one of her real photos and a style (clean studio, lifestyle, flat lay, gift-ready, vendor table, print mockup). Gemini keeps the product as-is and restyles the scene. Each tap makes 2 options; she adds the ones she likes. Without a photo it can generate from the description, but that won't show the exact item, so the app warns her. Code: `api/_handlers/generate-listing-image.js`.
+
+## Installing the studio app (admin)
+Only the admin area is installable. The manifest is added at runtime on `/dashboard` and `/login` (`src/lib/pwa.js`), so customers on the public site aren't offered an install. The dashboard's **Studio app** card installs it in one tap on Chrome, Edge and Android, and shows step-by-step instructions on iPhone/iPad (Safari → Share → Add to Home Screen). On iPhone, notifications only work after the app is installed; the Notifications card says so.
 
 ## Order statuses
 `pending → quote_sent → confirmed → proof_sent ⇄ revisions_requested → proof_approved → in_production → ready_for_pickup | shipped → completed` (plus `invoice_sent`, `payment_pending` for shop checkouts, `declined`, `cancelled`).

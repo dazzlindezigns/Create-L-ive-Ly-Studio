@@ -11,6 +11,11 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 - Vercel functions, ESM, `export default async function handler(req, res)`
 - Stripe Checkout Sessions (form-encoded POST, `STRIPE_SECRET_KEY`; `api/_lib/stripe.js`), Resend, web-push, Anthropic SDK (`claude-opus-4-8` via `api/_lib/anthropic.js`, structured outputs via zod), Gemini image API (REST, `GEMINI_API_KEY`). No shipping-label integration — tracking is entered manually.
 
+## Layout
+- Public pages: `/` homepage (`Home.jsx`), `/custom` order form (only reached from CTAs; old `/?type=` and `/order` links still work), `/shop/products`. Public pages share `SiteHeader`/`SiteFooter` (`src/components/SiteChrome.jsx`).
+- Responsive behavior uses the small class set in `src/index.css` (`container`, `grid-2`, `grid-4`, `hero-grid`, `order-grid`, `detail-cols`, `admin-sidebar`, `hide-desktop`…), because inline styles can't hold media queries. Admin pages render `<Nav>`, which adds `body.admin-layout` (desktop sidebar) and the phone bottom bar.
+- The installable PWA is admin-only: `enableAdminApp()` in `src/lib/pwa.js` adds the manifest and iOS tags on `/dashboard` and `/login`. Don't put `<link rel="manifest">` back in `index.html`.
+
 ## Rules
 - **Database changes go in a NEW file** `supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql`. Never edit a migration that already shipped. Supabase isn't connected to GitHub, so each new file must be pasted into the SQL Editor by hand: always tell the user the file's raw GitHub link and that it needs running. Keep migrations re-runnable (IF NOT EXISTS) and test them on a scratch Postgres first.
 - **Brand values come from `src/brand.js`** — never hardcode the business name or hex colors. It's imported by both the app and `/api`, so keep it browser-API-free.

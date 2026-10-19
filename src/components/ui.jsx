@@ -147,11 +147,11 @@ export function useFlash() {
 
 export function Modal({ title, onClose, children, width = 520 }) {
   return (
-    <div onClick={onClose} style={{
+    <div onClick={onClose} className="modal-overlay" style={{
       position: 'fixed', inset: 0, background: 'rgba(20,14,24,0.5)', zIndex: 200,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0,
     }}>
-      <div onClick={e => e.stopPropagation()} style={{
+      <div onClick={e => e.stopPropagation()} className="modal-sheet" style={{
         background: 'var(--card)', width: '100%', maxWidth: width, maxHeight: '92vh', overflowY: 'auto',
         borderRadius: '22px 22px 0 0', padding: '22px 20px calc(24px + env(safe-area-inset-bottom))',
       }}>

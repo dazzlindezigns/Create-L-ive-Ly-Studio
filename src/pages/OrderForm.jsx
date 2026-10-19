@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BRAND, PRODUCT_TYPES, STICKER_BAR } from '../brand'
 import { api, uploadFile } from '../lib/api'
-import { ui, Button, Field, Input, TextArea, Select, BrandHeader, Spinner } from '../components/ui'
+import { ui, Button, Field, Input, TextArea, Select, Spinner } from '../components/ui'
+import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 
 const BLANK = {
   productType: '', quantity: 1, size: '', finish: '',
@@ -82,9 +83,9 @@ export default function OrderForm() {
 
   if (doneId) {
     return (
-      <div style={ui.page}>
-        <BrandHeader />
-        <div style={{ ...ui.wrap, maxWidth: 520 }}>
+      <div style={{ ...ui.page, paddingBottom: 0 }}>
+        <SiteHeader />
+        <div style={{ ...ui.wrap, maxWidth: 520, paddingTop: 40 }}>
           <div style={{ ...ui.card, textAlign: 'center', padding: '36px 24px' }}>
             <div style={{ fontSize: 46, marginBottom: 8 }}>🎉</div>
             <h1 style={ui.h1}>Request received!</h1>
@@ -95,6 +96,7 @@ export default function OrderForm() {
             <Button variant="ghost" onClick={() => { setF(BLANK); setFiles([]); setDoneId(null) }}>Submit another request</Button>
           </div>
         </div>
+        <SiteFooter />
       </div>
     )
   }
@@ -102,11 +104,12 @@ export default function OrderForm() {
   const minDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
 
   return (
-    <div style={ui.page}>
-      <BrandHeader subtitle={BRAND.subTagline} />
-      <form onSubmit={submit} style={{ ...ui.wrap, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ ...ui.page, paddingBottom: 0 }}>
+      <SiteHeader />
+      <form onSubmit={submit} style={{ ...ui.wrap, maxWidth: 760, paddingTop: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ textAlign: 'center', marginBottom: 4 }}>
-          <h1 style={ui.h1}>Custom creations made <span style={{ color: 'var(--primary)' }}>with purpose.</span></h1>
+          <div style={{ ...ui.eyebrow, marginBottom: 8 }}>Custom orders & Sticker Bar bookings</div>
+          <h1 style={ui.h1}>{isEvent ? 'Book the Sticker Bar' : <>Request a custom <span style={{ color: 'var(--primary)' }}>creation</span></>}</h1>
           <p style={{ ...ui.muted, marginTop: 8, lineHeight: 1.7 }}>
             Tell us what you're dreaming up and we'll send a personalized quote. Looking for something ready-made?{' '}
             <Link to="/shop/products">Shop the collections</Link>.
@@ -125,6 +128,8 @@ export default function OrderForm() {
             ))}
           </div>
 
+          {!f.productType && <p style={{ ...ui.hint, marginTop: 14, fontSize: 13 }}>Choose one to start your request.</p>}
+          {f.productType && (<>
           {isEvent ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
               <p style={{ ...ui.muted, lineHeight: 1.6 }}>{STICKER_BAR.blurb}</p>
@@ -170,7 +175,10 @@ export default function OrderForm() {
               : "Names, dates, text, colors, the occasion, who it's for — anything that helps us bring it to life."}>
             <TextArea value={f.description} onChange={set('description')} required />
           </Field>
+          </>)}
         </section>
+
+        {f.productType && (<>
 
         <section style={ui.card}>
           <div style={ui.eyebrow}>Step 2</div>
@@ -250,7 +258,9 @@ export default function OrderForm() {
           {uploading ? 'Uploading files…' : isEvent ? 'Request my Sticker Bar →' : 'Send my request →'}
         </Button>
         <p style={{ ...ui.muted, textAlign: 'center', fontSize: 12 }}>No payment now — you'll review and approve a quote first.</p>
+        </>)}
       </form>
+      <SiteFooter />
     </div>
   )
 }

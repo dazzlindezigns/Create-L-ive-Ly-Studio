@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { enableAdminApp } from '../lib/pwa'
 import { Loading, ui, Button } from './ui'
 
 // Gate for /dashboard routes: must be signed in AND listed in admin_users.
@@ -9,6 +10,7 @@ export default function RequireAdmin({ children }) {
   const [state, setState] = useState('checking') // checking | ok | anon | forbidden
 
   useEffect(() => {
+    enableAdminApp()
     let alive = true
     const check = async () => {
       const { data: { session } } = await supabase.auth.getSession()

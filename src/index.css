@@ -46,3 +46,46 @@ img { max-width: 100%; }
   .no-print { display: none !important; }
   body { background: #fff; }
 }
+
+/* ── Responsive layout helpers (inline styles can't do media queries) ───────── */
+.container { width: 100%; max-width: 1160px; margin: 0 auto; padding: 0 20px; }
+
+/* Public site header */
+.site-nav-links { display: none; }
+.site-menu-btn { display: inline-flex; }
+.site-mobile-menu { display: flex; }
+@media (min-width: 900px) {
+  .site-nav-links { display: flex; }
+  .site-menu-btn, .site-mobile-menu { display: none !important; }
+}
+
+/* Generic responsive grids */
+.grid-2, .grid-4, .hero-grid, .split { display: grid; gap: 18px; grid-template-columns: 1fr; }
+@media (min-width: 700px) { .grid-2, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 900px) {
+  .hero-grid { grid-template-columns: 1.15fr 0.85fr; align-items: center; gap: 40px; }
+  .split { grid-template-columns: 1fr 1fr; align-items: center; gap: 40px; }
+}
+.hide-mobile { display: none; }
+@media (min-width: 900px) { .hide-mobile { display: initial; } .hide-desktop { display: none !important; } }
+
+/* Admin shell: bottom tab bar on phones, sidebar on desktop */
+.admin-sidebar { display: none; }
+@media (min-width: 960px) {
+  body.admin-layout #root { padding-left: 232px; }
+  .admin-sidebar { display: flex; }
+  .admin-bottom-nav { display: none !important; }
+  body.admin-layout .admin-page { padding-bottom: 40px !important; }
+}
+.order-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 1200px) { .order-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.detail-cols { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: start; }
+.detail-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (min-width: 1080px) { .detail-cols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); } }
+
+/* Modals: bottom sheet on phones, centered dialog on desktop */
+@media (min-width: 700px) {
+  .modal-overlay { align-items: center !important; padding: 24px !important; }
+  .modal-sheet { border-radius: 22px !important; }
+}

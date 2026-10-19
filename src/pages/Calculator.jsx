@@ -113,8 +113,8 @@ export default function Calculator() {
   }
 
   return (
-    <div style={ui.page}>
-      <div style={{ ...ui.wrap, display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={ui.page} className="admin-page">
+      <div style={{ ...ui.wrap, maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <header className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <div style={ui.eyebrow}>Pricing</div>

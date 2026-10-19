@@ -44,16 +44,16 @@ export default function OrderDetail() {
     return true
   }
 
-  if (notFound) return <div style={ui.page}><Nav back="/dashboard" backLabel="Orders" /><div style={{ ...ui.wrap, textAlign: 'center', paddingTop: 60 }}>Order not found.</div></div>
-  if (!order) return <div style={ui.page}><Nav back="/dashboard" backLabel="Orders" /><Loading /></div>
+  if (notFound) return <div style={ui.page} className="admin-page"><Nav back="/dashboard" backLabel="Orders" /><div style={{ ...ui.wrap, textAlign: 'center', paddingTop: 60 }}>Order not found.</div></div>
+  if (!order) return <div style={ui.page} className="admin-page"><Nav back="/dashboard" backLabel="Orders" /><Loading /></div>
 
   const firstName = (order.customer_name || '').split(' ')[0] || 'there'
   const copy = (text, msg) => navigator.clipboard.writeText(text).then(() => flash(msg), () => flash('Copy failed', 'error'))
 
   return (
-    <div style={ui.page}>
+    <div style={ui.page} className="admin-page">
       <Nav back="/dashboard" backLabel="Orders" />
-      <div style={{ ...ui.wrap, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ ...ui.wrap, maxWidth: 1180, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* Header */}
         <section style={ui.card}>
@@ -78,9 +78,9 @@ export default function OrderDetail() {
           </div>
         </section>
 
-        {/* Admin-only */}
-        <AdminOnly order={order} update={update} />
 
+        <div className="detail-cols">
+          <div className="detail-col">
         {/* Request */}
         <section style={ui.card}>
           <h2 style={ui.h2}>Request</h2>
@@ -122,6 +122,11 @@ export default function OrderDetail() {
             'Proof message copied — paste it into a text!',
           )} />
 
+          </div>
+          <div className="detail-col">
+        {/* Admin-only */}
+        <AdminOnly order={order} update={update} />
+
         <EmailPanel order={order} flash={flash} />
 
         {(order.shop_cart || []).some(l => l.kind === 'digital') && (
@@ -162,6 +167,8 @@ export default function OrderDetail() {
             if (error) flash(error.message, 'error'); else navigate('/dashboard')
           }}>Delete</Button>
         </section>
+          </div>
+        </div>
       </div>
 
       {shipOpen && <ShipModal order={order} onClose={() => setShipOpen(false)} onDone={(msg) => { setShipOpen(false); flash(msg); load() }} />}

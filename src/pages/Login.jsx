@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { enableAdminApp } from '../lib/pwa'
 import { BRAND } from '../brand'
 import { ui, Button, Field, Input } from '../components/ui'
 
@@ -11,6 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  useEffect(() => { enableAdminApp() }, [])
 
   const handleLogin = async (e) => {
     e.preventDefault()

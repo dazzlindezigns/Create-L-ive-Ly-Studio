@@ -49,11 +49,25 @@ export const FONTS = {
 
 // Her storefront collections. Shop products are tagged with one of these keys.
 export const COLLECTIONS = [
-  { key: 'labs', name: 'Labs', blurb: '3D printed creations, specialty pieces & personalized accessories' },
-  { key: 'paper-studio', name: 'Paper Studio', blurb: 'Digital papers, seamless patterns & downloadable designs' },
-  { key: 'vendors', name: 'Vendors', blurb: 'Branded essentials, business accessories & display pieces' },
-  { key: 'elevate', name: 'Elevate', blurb: 'Empowering apparel, inspirational mugs & journals' },
+  { key: 'labs', name: 'Labs', image: '/img/labs.webp', blurb: '3D printed creations, specialty pieces & personalized accessories',
+    description: 'Explore custom 3D printed creations, specialty pieces, personalized accessories, and innovative designs made to stand out.' },
+  { key: 'paper-studio', name: 'Paper Studio', image: '/img/paper-studio.webp', blurb: 'Digital papers, seamless patterns & downloadable designs',
+    description: 'Discover beautiful digital papers, seamless patterns, creative backgrounds, and downloadable designs for your next creative project.' },
+  { key: 'vendors', name: 'Vendors', image: '/img/vendors.webp', blurb: 'Branded essentials, business accessories & display pieces',
+    description: 'Elevate your vendor table with branded essentials, business accessories, display pieces, and products designed to help your business make an impression.' },
+  { key: 'elevate', name: 'Elevate', image: '/img/elevate.webp', blurb: 'Empowering apparel, inspirational mugs & journals',
+    description: 'Wear your confidence and sip with purpose. Discover empowering apparel, inspirational mugs, journals, and everyday essentials designed to encourage and inspire.' },
 ]
+
+// Homepage copy (from her storefront). Edit freely.
+export const SITE = {
+  heroImage: '/img/hero.webp',
+  heroTitle: 'Custom creations made',
+  heroAccent: 'with purpose.',
+  heroIntro: 'Welcome to Create(L)ive(Ly) Studio — where creativity, meaningful details, and custom designs come together. From personalized gifts and keepsakes to 3D printed creations, digital papers, vendor essentials, and empowering merchandise, every piece is created to make an impression.',
+  badges: ['3D Prints', 'Custom Gifts', 'Keepsakes', 'Vendor Essentials', 'Digital Papers', 'Empowering Merch', 'Sticker Bar'],
+  about: "At Create(L)ive(Ly) Studio, we believe the little details make the biggest impressions. Whether you're celebrating someone special, honoring a loved one, building your brand, creating something beautiful, or simply treating yourself, our collections are designed to bring creativity and meaning together.",
+}
 
 // Custom order form — plain labels stored on the order. Edit freely.
 // The Sticker Bar is an on-site event experience, so it gets its own booking fields on the form.

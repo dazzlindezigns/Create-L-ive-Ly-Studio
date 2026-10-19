@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import RequireAdmin from './components/RequireAdmin'
 import { missingEnv } from './lib/supabase'
 import SetupNeeded from './pages/SetupNeeded'
+import Home from './pages/Home'
 import OrderForm from './pages/OrderForm'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -21,7 +22,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* Customer-facing */}
-        <Route path="/" element={<OrderForm />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/custom" element={<OrderForm />} />
         <Route path="/order" element={<OrderForm />} />
         <Route path="/quote/:orderId" element={<QuoteReview />} />
         <Route path="/proof/:orderId" element={<ProofReview />} />

@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api, uploadFile } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { BRAND, BULK_TIERS, COLLECTIONS, getBulkTier } from '../brand'
-import { ui, Button, Field, Input, TextArea, Select, Loading, BrandHeader, Modal } from '../components/ui'
+import { ui, Button, Field, Input, TextArea, Select, Loading, Modal } from '../components/ui'
+import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 
 const CART_KEY = 'shop-cart-v1'
 const loadCart = () => { try { return JSON.parse(localStorage.getItem(CART_KEY)) || [] } catch { return [] } }
@@ -64,9 +65,11 @@ export default function ShopProducts() {
   if (!products) return <Loading />
 
   return (
-    <div style={{ ...ui.page, paddingBottom: 110 }}>
-      <BrandHeader subtitle={BRAND.subTagline} />
-      <div style={{ ...ui.wrap, maxWidth: 960 }}>
+    <div style={{ ...ui.page, paddingBottom: 0 }}>
+      <SiteHeader />
+      <div className="container" style={{ paddingTop: 28, paddingBottom: 90 }}>
+        <h1 style={{ ...ui.h1, textAlign: 'center', marginBottom: 6 }}>{active.key === 'all' ? 'Shop' : active.label}</h1>
+        <p style={{ ...ui.muted, textAlign: 'center', marginBottom: 18 }}>{active.blurb || BRAND.subTagline}</p>
         {!shopOpen && (
           <div style={{ ...ui.card, background: 'var(--card2)', textAlign: 'center', marginBottom: 16 }}>
             <strong>Shop is closed</strong>
@@ -88,7 +91,6 @@ export default function ShopProducts() {
               ))}
             </div>
           )}
-          {active.blurb && <p style={{ ...ui.muted, textAlign: 'center', margin: '-4px 0 14px' }}>{active.blurb}</p>}
           <div style={styles.grid}>
             {shown.map(p => (
               <button key={p.id} onClick={() => setParam('p', p.id)} style={styles.tile}>
@@ -106,9 +108,10 @@ export default function ShopProducts() {
           </>
         )}
         <p style={{ ...ui.muted, textAlign: 'center', marginTop: 24 }}>
-          Need something custom? <Link to="/">Request a custom order</Link>
+          Need something custom? <Link to="/custom">Request a custom item</Link>
         </p>
       </div>
+      <SiteFooter />
 
       {count > 0 && !cartOpen && (
         <button onClick={() => setCartOpen(true)} style={styles.cartBar}>
@@ -345,7 +348,7 @@ const Line = ({ k, v, green }) => <div style={{ ...styles.line, color: green ? '
 
 const styles = {
   bulkStrip: { textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--secondary)', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 50, padding: '8px 14px', marginBottom: 16 },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(46%, 220px), 1fr))', gap: 14 },
   tile: { display: 'flex', flexDirection: 'column', alignItems: 'stretch', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit' },
   imgWrap: { aspectRatio: '1', background: 'var(--card2)' },
   img: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
