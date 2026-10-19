@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { db, requireMethod, requireAdmin, HttpError, BRAND } from '../_lib/core.js'
-import { storageUrlsOnly } from '../_lib/validate.js'
+import { productPhotoUrls } from '../_lib/validate.js'
 
 // Gemini image model (aka "Nano Banana"). Override with GEMINI_IMAGE_MODEL when Google ships a newer one.
 const MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image'
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
   const b = req.body || {}
   const style = STYLES[b.style] ? b.style : 'studio'
-  const sourceUrl = storageUrlsOnly(b.sourceImageUrl ? [b.sourceImageUrl] : [], 'product-images')?.[0] || null
+  const sourceUrl = productPhotoUrls([b.sourceImageUrl])[0] || null
   const name = String(b.productName || '').trim().slice(0, 120)
   const notes = String(b.notes || '').trim().slice(0, 500)
   if (!sourceUrl && !name && !notes) throw new HttpError(400, 'Pick a product photo or describe the product')

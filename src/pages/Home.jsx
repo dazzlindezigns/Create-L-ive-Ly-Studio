@@ -1,18 +1,35 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { BRAND, COLLECTIONS, SITE, STICKER_BAR } from '../brand'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
+import { api } from '../lib/api'
+import { fmt } from '../lib/money'
+import { normalizeTiers, offersDigital } from '../lib/cart'
 
 // Public website homepage. The custom order form lives at /custom and is only reached
-// from the "Request a custom item" / "Book the Sticker Bar" buttons.
+// from the "Request a custom item" buttons.
 export default function Home() {
   const location = useLocation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
+  const [sheets, setSheets] = useState([])
+  const [tiers, setTiers] = useState(() => normalizeTiers(STICKER_BAR.stackTiers))
 
-  // Old links pointed at /?type=sticker-bar (the form used to live here).
+  // Live Sticker Bar sheets + her current Stack & Save tiers (falls back to the mockups below).
   useEffect(() => {
-    if (params.get('type')) navigate(`/custom?type=${encodeURIComponent(params.get('type'))}`, { replace: true })
+    api('get-products').then(p => {
+      // Full rows of three; with fewer than three live sheets the mockups show instead.
+      const live = p.filter(x => x.collection === STICKER_BAR.collection)
+      setSheets(live.slice(0, live.length >= 6 ? 6 : live.length >= 3 ? 3 : 0))
+    }).catch(() => {})
+    api('get-settings').then(s => setTiers(normalizeTiers(s.sticker_bar_tiers))).catch(() => {})
+  }, [])
+
+  // Old links: /?type=… (the form used to live here) and /?type=sticker-bar (now the sticker sheet shop).
+  useEffect(() => {
+    const type = params.get('type')
+    if (!type) return
+    navigate(type === 'sticker-bar' ? `/shop/products?c=${STICKER_BAR.collection}` : `/custom?type=${encodeURIComponent(type)}`, { replace: true })
   }, [params, navigate])
 
   // Header links like /#about scroll to that section.
@@ -52,7 +69,7 @@ export default function Home() {
           <span style={s.hint}>Your destination for all things custom</span>
         </div>
         <div className="grid-2">
-          {COLLECTIONS.map(c => (
+          {COLLECTIONS.filter(c => !c.featured).map(c => (
             <Link key={c.key} to={`/shop/products?c=${c.key}`} style={s.tile}>
               <div style={s.thumb}><img src={c.image} alt={`${BRAND.name} ${c.name}`} loading="lazy" style={s.thumbImg} /></div>
               <div style={{ padding: '20px 22px 24px' }}>
@@ -66,31 +83,68 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Custom orders + Sticker Bar */}
-      <section className="container grid-2" style={{ paddingTop: 48 }}>
-        <div id="custom" style={s.feature}>
-          <div style={s.tileKicker}>Made just for you</div>
-          <h2 style={{ ...s.h2, marginTop: 8 }}>Custom orders</h2>
-          <p style={s.featureText}>
-            Personalized gifts, keepsakes, 3D prints, brand merch and vendor essentials designed around your idea.
-            Tell us what you're dreaming up, share any artwork, and we'll send a personalized quote. No payment until you approve it.
-          </p>
+      {/* Sticker Bar — her sticker-sheet line */}
+      <section id="sticker-bar" className="container" style={{ paddingTop: 48, scrollMarginTop: 80 }}>
+        <div style={s.stickerWrap}>
+          <div className="split">
+            <div>
+              <img src={STICKER_BAR.logo} alt={`${BRAND.shortName} ${STICKER_BAR.name} — ${STICKER_BAR.tagline}`} style={{ width: 'min(380px, 100%)', height: 'auto', display: 'block' }} />
+              <div style={{ ...s.tileKicker, marginTop: 18 }}>{STICKER_BAR.motto}</div>
+              <h2 style={{ ...s.h2, marginTop: 8 }}>{STICKER_BAR.headline}</h2>
+              <p style={s.featureText}>{STICKER_BAR.intro}</p>
+              <div style={s.tierRow}>
+                <span style={{ ...s.tileKicker, alignSelf: 'center' }}>Stack & save</span>
+                {tiers.slice().reverse().map(t => (
+                  <span key={t.min} style={s.tier}><strong>{t.min}+</strong> {t.pct}% off</span>
+                ))}
+              </div>
+              <div style={s.ctaRow}>
+                <Link to={`/shop/products?c=${STICKER_BAR.collection}`} style={s.btnPink}>Shop the sheets →</Link>
+                <Link to="/shop/products?c=digital" style={s.btnGhost}>Digital downloads</Link>
+              </div>
+            </div>
+            <div style={s.sheetGrid}>
+              {(sheets.length ? sheets : STICKER_BAR.showcase.map(src => ({ src }))).map(x => x.id ? (
+                <Link key={x.id} to={`/shop/products?c=${STICKER_BAR.collection}&p=${x.id}`} style={s.sheet}>
+                  <img src={x.image_urls?.[0] || STICKER_BAR.logo} alt={`${x.name} sticker sheet`} loading="lazy" style={s.sheetImg} />
+                  {x.badge && <span style={s.sheetBadge}>{x.badge}</span>}
+                  <span style={s.sheetName}>{x.name}<br /><span style={{ color: 'var(--primary)' }}>from {fmt(offersDigital(x) && x.digital_price != null ? Math.min(x.price, x.digital_price) : x.price)}</span></span>
+                </Link>
+              ) : (
+                <div key={x.src} style={s.sheet}><img src={x.src} alt="Sticker Bar sticker sheet" loading="lazy" style={s.sheetImg} /></div>
+              ))}
+            </div>
+          </div>
+          <div className="grid-3" style={{ marginTop: 28 }}>
+            {STICKER_BAR.perks.map(([icon, title, text]) => (
+              <div key={title} style={s.perk}>
+                <div style={{ fontSize: 22 }}>{icon}</div>
+                <div style={{ fontWeight: 700, marginTop: 6 }}>{title}</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginTop: 4 }}>{text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Custom orders */}
+      <section id="custom" className="container" style={{ paddingTop: 48, scrollMarginTop: 80 }}>
+        <div style={s.feature} className="split">
+          <div>
+            <div style={s.tileKicker}>Made just for you</div>
+            <h2 style={{ ...s.h2, marginTop: 8 }}>Custom orders</h2>
+            <p style={s.featureText}>
+              Personalized gifts, keepsakes, 3D prints, brand merch, custom stickers and vendor essentials designed around your idea.
+              Tell us what you're dreaming up, share any artwork, and we'll send a personalized quote. No payment until you approve it.
+            </p>
+            <Link to="/custom" style={s.btnPink}>Request a custom item →</Link>
+          </div>
           <ol style={s.steps}>
             <li>Share your idea & files</li>
             <li>Review and sign your quote</li>
             <li>Approve your proof</li>
             <li>We create it with care</li>
           </ol>
-          <Link to="/custom" style={s.btnPink}>Request a custom item →</Link>
-        </div>
-        <div id="sticker-bar" style={{ ...s.feature, background: 'linear-gradient(160deg, var(--card2), #fff)', scrollMarginTop: 80 }}>
-          <div style={s.tileKicker}>Events & experiences</div>
-          <h2 style={{ ...s.h2, marginTop: 8 }}>The Sticker Bar</h2>
-          <p style={s.featureText}>{STICKER_BAR.blurb} Guests build their own creations to take home, and we bring everything and handle setup.</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '4px 0 20px' }}>
-            {STICKER_BAR.eventTypes.filter(t => t !== 'Other').map(t => <span key={t} style={s.badge}>{t}</span>)}
-          </div>
-          <Link to="/custom?type=sticker-bar" style={s.btnPink}>Book the Sticker Bar →</Link>
         </div>
       </section>
 
@@ -136,5 +190,14 @@ const s = {
   feature: { borderRadius: 22, border: '1px solid var(--border)', background: '#fff', padding: '28px 26px', boxShadow: '0 12px 35px rgba(148,82,103,0.06)' },
   featureText: { fontSize: 14, lineHeight: 1.9, color: 'var(--muted)', margin: '12px 0 16px' },
   steps: { paddingLeft: 20, margin: '0 0 22px', fontSize: 14, lineHeight: 2, color: 'var(--dark)' },
+  stickerWrap: { borderRadius: 26, border: '1px solid var(--border)', background: 'linear-gradient(160deg, var(--card2), #fff 60%)', padding: 'clamp(22px, 4vw, 40px)', boxShadow: '0 12px 35px rgba(148,82,103,0.06)' },
+  tierRow: { display: 'flex', flexWrap: 'wrap', gap: 8, margin: '4px 0 6px' },
+  tier: { padding: '8px 12px', borderRadius: 12, background: '#fff', border: '1px solid var(--border)', fontSize: 13, color: 'var(--dark)' },
+  sheetGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 },
+  sheet: { position: 'relative', display: 'block', borderRadius: 14, overflow: 'hidden', background: '#fff', border: '1px solid var(--border)', textDecoration: 'none', color: 'var(--dark)' },
+  sheetImg: { width: '100%', aspectRatio: '2 / 3', objectFit: 'cover', display: 'block' },
+  sheetBadge: { position: 'absolute', top: 6, left: 6, background: 'var(--primary)', color: '#fff', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '3px 7px', borderRadius: 20 },
+  sheetName: { display: 'block', padding: '6px 8px 8px', fontSize: 11, fontWeight: 700, lineHeight: 1.35 },
+  perk: { background: 'rgba(255,255,255,0.85)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px' },
   about: { borderRadius: 22, border: '1px solid var(--border)', background: 'rgba(255,255,255,0.75)', padding: '28px 26px' },
 }

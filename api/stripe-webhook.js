@@ -76,6 +76,14 @@ async function handleCompleted(session) {
   if (PRE_PAYMENT.includes(order.status)) updates.status = fullyPaid && isDigital && !hasPhysicalLines(order) ? 'completed' : 'confirmed'
   await supabase.from('orders').update(updates).eq('id', order.id)
 
+  // Shop orders take physical sheets/items out of stock once they're paid for.
+  if (fullyPaid && !order.balance_paid && order.source === 'shop') {
+    for (const l of (order.shop_cart || []).filter(l => l.kind === 'physical' && l.productId)) {
+      const { error } = await supabase.rpc('decrement_product_stock', { p_id: l.productId, p_qty: l.quantity })
+      if (error) console.error('stock update failed', l.productId, error.message)
+    }
+  }
+
   const label = { deposit: 'Deposit', balance: 'Balance', full: 'Payment' }[row.kind] || 'Payment'
   const remaining = Math.max(0, round2(order.price - amountPaid))
 

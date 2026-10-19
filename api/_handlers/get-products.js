@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   const supabase = db()
   let query = supabase
     .from('products')
-    .select('id, name, description, price, kind, collection, digital_file_name, image_urls, options, bulk_pricing_enabled, sort_order')
+    .select('id, name, description, price, digital_price, kind, collection, series, badge, stock, digital_file_name, image_urls, options, bulk_pricing_enabled, sort_order')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })

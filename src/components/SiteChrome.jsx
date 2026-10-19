@@ -54,7 +54,7 @@ export function SiteFooter() {
         <div>
           <div style={styles.footHead}>Custom</div>
           <Link to="/custom" style={styles.footLink}>Request a custom item</Link>
-          <Link to="/custom?type=sticker-bar" style={styles.footLink}>Book the Sticker Bar</Link>
+          <Link to="/custom?type=Custom%20stickers%20%26%20labels" style={styles.footLink}>Custom stickers & labels</Link>
         </div>
         <div>
           <div style={styles.footHead}>Studio</div>

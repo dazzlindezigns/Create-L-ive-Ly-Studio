@@ -1,6 +1,8 @@
 import { db, HttpError } from './core.js'
-import { getBulkTier } from '../../src/brand.js'
+import { cartTotals, discountAmount, lineFormat, unitPrice, isSticker, offersDigital } from '../../src/lib/cart.js'
 import { round2 } from '../../src/lib/money.js'
+
+export { discountAmount }
 
 // Looks up an active discount code. Returns { row } or { error }.
 export async function findDiscount(code) {
@@ -13,66 +15,66 @@ export async function findDiscount(code) {
   return { row: data }
 }
 
-export function discountAmount(row, base) {
-  if (!row) return 0
-  const v = Number(row.discount_value) || 0
-  return row.discount_type === 'percent'
-    ? round2(base * Math.min(v, 100) / 100)
-    : round2(Math.min(v, base))
-}
-
-// Server-side cart pricing. `items` = [{ productId, option, quantity }].
+// Server-side cart pricing. `items` = [{ productId, option, quantity, format: 'digital'|'physical' }].
 // Prices always come from the products table, never from the client.
-export async function priceCart(items, code, shippingFee = 0) {
+// opts: { shippingFee, freeShippingOver, stackTiers } from the settings table.
+export async function priceCart(items, code, opts = {}) {
   if (!Array.isArray(items) || !items.length) throw new HttpError(400, 'Your cart is empty')
   const ids = [...new Set(items.map(i => i.productId))]
   const { data: products, error } = await db().from('products').select('*').in('id', ids).eq('active', true)
   if (error) throw new HttpError(500, error.message)
 
   const seenDigital = new Set()
-  const lines = items.filter(i => {
-    const p = products.find(x => x.id === i.productId)
-    if (p?.kind !== 'digital') return true
-    if (seenDigital.has(p.id)) return false
-    seenDigital.add(p.id)
-    return true
-  }).map(i => {
+  const lines = []
+  for (const i of items) {
     const p = products.find(x => x.id === i.productId)
     if (!p) throw new HttpError(400, 'A product in your cart is no longer available')
-    const digital = p.kind === 'digital'
-    if (digital && !p.digital_file_path) throw new HttpError(400, `${p.name} isn't available for download yet`)
+    const format = lineFormat(p, i.format)
+    const digital = format === 'digital'
     // One copy of a digital file per order — the download link covers it.
+    if (digital) {
+      if (seenDigital.has(p.id)) continue
+      seenDigital.add(p.id)
+      if (!p.digital_file_path) throw new HttpError(400, `${p.name} isn't available for download yet`)
+    }
     const quantity = digital ? 1 : Math.max(1, Math.min(10000, parseInt(i.quantity, 10) || 1))
     const option = !digital && p.options?.length ? (p.options.includes(i.option) ? i.option : p.options[0]) : null
-    return {
+    const price = unitPrice(p, format)
+    lines.push({
       productId: p.id,
       productName: p.name,
       kind: digital ? 'digital' : 'physical',
       ...(digital ? { digitalFilePath: p.digital_file_path, digitalFileName: p.digital_file_name } : {}),
       option,
       quantity,
-      unitPrice: round2(p.price),
-      itemTotal: round2(p.price * quantity),
+      unitPrice: price,
+      itemTotal: round2(price * quantity),
       bulkEligible: p.bulk_pricing_enabled !== false,
-    }
-  })
+      sticker: isSticker(p),
+    })
+  }
 
-  const subtotal = round2(lines.reduce((s, l) => s + l.itemTotal, 0))
-  const bulkQty = lines.filter(l => l.bulkEligible).reduce((s, l) => s + l.quantity, 0)
-  const bulkBase = lines.filter(l => l.bulkEligible).reduce((s, l) => s + l.itemTotal, 0)
-  const tier = getBulkTier(bulkQty)
-  const bulkDiscount = tier ? round2(bulkBase * tier.pct / 100) : 0
+  // Stock covers physical units only (all options of a product share one count).
+  for (const p of products) {
+    if (p.stock == null) continue
+    const wanted = lines.filter(l => l.productId === p.id && l.kind === 'physical').reduce((s, l) => s + l.quantity, 0)
+    if (wanted > p.stock) {
+      throw new HttpError(400, p.stock > 0 ? `Only ${p.stock} of ${p.name} left — please lower the quantity` : `${p.name} is sold out${offersDigital(p) ? ' (the digital download is still available)' : ''}`)
+    }
+  }
 
   let discount = null
-  let codeDiscount = 0
   if (code) {
     const found = await findDiscount(code)
     if (found.error) throw new HttpError(400, found.error)
     discount = found.row
-    codeDiscount = discountAmount(discount, subtotal - bulkDiscount)
   }
 
-  const shipping = round2(shippingFee)
-  const total = Math.max(0, round2(subtotal - bulkDiscount - codeDiscount + shipping))
-  return { lines, subtotal, tier, bulkDiscount, discount, codeDiscount, shipping, total }
+  const totals = cartTotals(lines, {
+    stackTiers: opts.stackTiers,
+    code: discount,
+    shippingFee: opts.shippingFee || 0,
+    freeShippingOver: opts.freeShippingOver || 0,
+  })
+  return { lines, discount, ...totals }
 }

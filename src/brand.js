@@ -48,7 +48,10 @@ export const FONTS = {
 }
 
 // Her storefront collections. Shop products are tagged with one of these keys.
+// `featured` collections get their own homepage section instead of a tile.
 export const COLLECTIONS = [
+  { key: 'sticker-bar', name: 'Sticker Bar', image: '/img/sticker-bar/collection.webp', featured: true, blurb: 'Sticker sheets with personality — digital or vinyl',
+    description: 'Twelve-sticker sheets for planners, journals, laptops and water bottles. Grab them as an instant download or premium waterproof vinyl, and stack & save when you mix sheets.' },
   { key: 'labs', name: 'Labs', image: '/img/labs.webp', blurb: '3D printed creations, specialty pieces & personalized accessories',
     description: 'Explore custom 3D printed creations, specialty pieces, personalized accessories, and innovative designs made to stand out.' },
   { key: 'paper-studio', name: 'Paper Studio', image: '/img/paper-studio.webp', blurb: 'Digital papers, seamless patterns & downloadable designs',
@@ -69,17 +72,32 @@ export const SITE = {
   about: "At Create(L)ive(Ly) Studio, we believe the little details make the biggest impressions. Whether you're celebrating someone special, honoring a loved one, building your brand, creating something beautiful, or simply treating yourself, our collections are designed to bring creativity and meaning together.",
 }
 
-// Custom order form — plain labels stored on the order. Edit freely.
-// The Sticker Bar is an on-site event experience, so it gets its own booking fields on the form.
+// The Sticker Bar — her sticker-sheet line ("a Create.(L)ive.Ly Studio company").
+// Each sheet is ONE product sold two ways: a printable digital download and a physical vinyl
+// sheet (Products → "Also sell as a digital download"). Sheets mix-and-match toward Stack & Save.
 export const STICKER_BAR = {
-  label: 'Sticker Bar (event booking)',
-  blurb: 'A build-your-own sticker experience for parties, showers, school & church events, team days and pop-ups.',
-  eventTypes: ['Birthday party', 'Baby or bridal shower', 'School or church event', 'Corporate / team event', 'Vendor market or pop-up', 'Other'],
-  durations: ['1 hour', '2 hours', '3 hours', '4+ hours'],
+  collection: 'sticker-bar',      // products.collection key
+  name: 'Sticker Bar',
+  logo: '/img/sticker-bar/logo.webp',
+  tagline: 'Serving up stickers with personality',
+  motto: 'pick. peel. stick.',
+  headline: 'Sticker sheets for the life you’re already living',
+  intro: 'Twelve-sticker collections, digital or vinyl, made to sit right where your day already lives — planner, laptop, water bottle, wall.',
+  perks: [
+    ['⚡', 'Instant digital delivery', 'Your download link lands in your inbox the second checkout completes.'],
+    ['📦', 'Ships in 3 days', 'Premium waterproof vinyl, packed flat so nothing bends.'],
+    ['✨', 'New sheets every month', 'Fresh drops for every mood and season.'],
+  ],
+  // Default Stack & Save tiers. She can change them in Shop → Products (saved in settings.sticker_bar_tiers).
+  stackTiers: [{ min: 3, pct: 10 }, { min: 5, pct: 15 }, { min: 8, pct: 20 }],
+  badges: ['New', 'Sale', 'Bestseller', 'Back in stock', 'Limited'],
+  // Shown on the homepage until her sheets are live in the shop.
+  showcase: ['peace-in-progress', 'brooklyn-block-party', 'autumn-book-babe', 'amalfi-coast-girl', 'summer-block-party', 'retro-girl-era']
+    .map(k => `/img/sticker-bar/${k}.webp`),
 }
 
+// Custom order form — plain labels stored on the order. Edit freely.
 export const PRODUCT_TYPES = [
-  STICKER_BAR.label,
   'Custom stickers & labels',
   '3D printed piece',
   'Custom gift or keepsake',

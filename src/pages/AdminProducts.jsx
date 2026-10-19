@@ -2,12 +2,17 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { COLLECTIONS } from '../brand'
+import { COLLECTIONS, STICKER_BAR } from '../brand'
+import { normalizeTiers } from '../lib/cart'
 import Nav from '../components/Nav'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash, Badge } from '../components/ui'
 
-const BLANK = { kind: 'physical', collection: '', name: '', description: '', price: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
+const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
 const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', bulk_pricing_enabled: false }
+// Sticker Bar sheet: one listing, sold as vinyl AND as a download (prices from her mockups).
+const BLANK_SHEET = { ...BLANK, collection: STICKER_BAR.collection, price: 6.5, digital_price: 4, sell_digital: true, description: 'A sheet of 12 premium waterproof vinyl stickers. Perfect for planners, journals, laptops and water bottles.' }
+const LOW_STOCK = 5
+const toForm = (p) => ({ ...p, options: (p.options || []).join(', '), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
 export default function AdminProducts() {
@@ -37,12 +42,13 @@ export default function AdminProducts() {
   return (
     <div style={ui.page} className="admin-page">
       <div style={{ ...ui.wrap, maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div style={ui.eyebrow}>Shop</div>
             <h1 style={ui.h1}>Products</h1>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <Button small variant="ghost" onClick={() => setEditing(BLANK_SHEET)}>+ Sticker sheet</Button>
             <Button small variant="ghost" onClick={() => setEditing(BLANK_DIGITAL)}>+ Digital</Button>
             <Button small onClick={() => setEditing(BLANK)}>+ Physical</Button>
           </div>
@@ -56,38 +62,73 @@ export default function AdminProducts() {
         {products.length === 0 && <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)' }}>No products yet. Add your first one!</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {products.map(p => (
-            <button key={p.id} onClick={() => setEditing({ ...p, options: (p.options || []).join(', ') })} style={{ ...ui.card, ...styles.row }}>
+            <button key={p.id} onClick={() => setEditing(toForm(p))} style={{ ...ui.card, ...styles.row }}>
               {p.image_urls?.[0] ? <img src={p.image_urls[0]} alt="" style={styles.thumb} /> : <div style={{ ...styles.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</div>}
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
                 <div style={ui.muted}>
-                  {fmt(p.price)}
+                  {fmt(p.price)}{p.kind !== 'digital' && p.digital_price != null && ` · ${fmt(p.digital_price)} digital`}
                   {p.collection && ` · ${COLLECTIONS.find(c => c.key === p.collection)?.name || p.collection}`}
+                  {p.series && ` · ${p.series}`}
                   {p.kind === 'digital' ? ` · ${p.digital_file_name || 'no file uploaded'}` : p.options?.length ? ` · ${p.options.length} options` : ''}
+                  {p.kind !== 'digital' && p.stock != null && ` · ${p.stock} in stock`}
                 </div>
               </div>
               {p.kind === 'digital' && <Badge color="var(--primary)" bg="var(--card2)">Digital</Badge>}
-              {p.kind === 'digital' && !p.digital_file_path && <Badge color="var(--danger)" bg="rgba(220,38,38,0.08)">Needs file</Badge>}
+              {p.kind !== 'digital' && p.digital_price != null && <Badge color="var(--primary)" bg="var(--card2)">+ Digital</Badge>}
+              {(p.kind === 'digital' || p.digital_price != null) && !p.digital_file_path && <Badge color="var(--danger)" bg="rgba(220,38,38,0.08)">Needs file</Badge>}
+              {p.kind !== 'digital' && p.stock != null && p.stock <= LOW_STOCK && (
+                <Badge color={p.stock ? 'var(--warning)' : 'var(--danger)'} bg="rgba(199,128,43,0.1)">{p.stock ? 'Low stock' : 'Sold out'}</Badge>
+              )}
               {!p.active && <Badge color="#888" bg="rgba(0,0,0,0.06)">Hidden</Badge>}
             </button>
           ))}
         </div>
+
+        <StackTiers key={JSON.stringify(settings.sticker_bar_tiers ?? null)} value={settings.sticker_bar_tiers} onSave={v => saveSetting('sticker_bar_tiers', v)} />
 
         <DiscountCodes codes={codes} reload={load} flash={flash} />
 
         <section style={ui.card}>
           <h2 style={ui.h2}>Shop settings</h2>
           <SettingField label="Flat shipping fee ($)" type="number" value={settings.shop_shipping_fee ?? 0} onSave={v => saveSetting('shop_shipping_fee', Number(v) || 0)} />
+          <SettingField label="Free shipping when the order is at least ($) — 0 turns it off" type="number" value={settings.shop_free_shipping_over ?? 0} onSave={v => saveSetting('shop_free_shipping_over', Number(v) || 0)} />
           <SettingField label="Message when shop is closed" value={settings.shop_closed_message || ''} onSave={v => saveSetting('shop_closed_message', v)} />
           <SettingField label="In-person payment instructions (shown on quotes)" value={settings.in_person_payment_note || ''} onSave={v => saveSetting('in_person_payment_note', v)} />
           <p style={ui.hint}>Open/close the shop from the Orders dashboard.</p>
         </section>
       </div>
 
-      {editing && <ProductModal product={editing} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
+      {editing && <ProductModal product={editing} seriesList={[...new Set(products.map(x => x.series).filter(Boolean))]} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
       {toast}
       <Nav />
     </div>
+  )
+}
+
+// Sticker Bar "Stack & Save": % off every sheet once the cart has N+ sheets (any mix of sheets and formats).
+function StackTiers({ value, onSave }) {
+  // Remounted (via key) when the saved value changes, so local edits start from it.
+  const initial = () => normalizeTiers(value).slice().reverse()
+  const [tiers, setTiers] = useState(initial)
+  const set = (i, k, v) => setTiers(prev => prev.map((t, j) => j === i ? { ...t, [k]: v } : t))
+  const changed = JSON.stringify(tiers) !== JSON.stringify(initial())
+  return (
+    <section style={ui.card}>
+      <h2 style={ui.h2}>{STICKER_BAR.name} Stack & Save</h2>
+      <p style={{ ...ui.muted, marginBottom: 12 }}>Sheets in the {STICKER_BAR.name} collection get this discount when customers mix several — digital and vinyl both count.</p>
+      {tiers.map((t, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
+          <Field label="Buy at least"><Input type="number" min={2} value={t.min} onChange={e => set(i, 'min', e.target.value)} /></Field>
+          <Field label="% off"><Input type="number" min={1} max={90} value={t.pct} onChange={e => set(i, 'pct', e.target.value)} /></Field>
+          <button onClick={() => setTiers(prev => prev.filter((_, j) => j !== i))} style={{ ...styles.x, position: 'static', flexShrink: 0, marginBottom: 10 }} aria-label="Remove tier">×</button>
+        </div>
+      ))}
+      <div style={ui.row}>
+        {tiers.length < 6 && <Button small variant="ghost" onClick={() => setTiers(prev => [...prev, { min: (Number(prev.at(-1)?.min) || 1) + 2, pct: (Number(prev.at(-1)?.pct) || 0) + 5 }])}>+ Add tier</Button>}
+        {changed && <Button small onClick={() => onSave(tiers)}>Save tiers</Button>}
+      </div>
+    </section>
   )
 }
 
@@ -102,12 +143,13 @@ function SettingField({ label, value, onSave, type = 'text' }) {
   )
 }
 
-function ProductModal({ product, onClose, onSaved, flash }) {
+function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
   const [p, setP] = useState(product)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [fileUploading, setFileUploading] = useState(false)
   const isDigital = p.kind === 'digital'
+  const hasFile = isDigital || p.sell_digital // a download file is part of this listing
   const set = (k) => (e) => setP(prev => ({ ...prev, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
   const onFiles = async (e) => {
@@ -137,13 +179,18 @@ function ProductModal({ product, onClose, onSaved, flash }) {
 
   const save = async () => {
     if (!p.name.trim() || !(Number(p.price) > 0)) return flash('Name and price are required', 'error')
-    if (isDigital && !p.digital_file_path && p.active) return flash('Upload the download file, or untick "Visible in shop" to save a draft', 'error')
+    if (p.sell_digital && !isDigital && !(Number(p.digital_price) > 0)) return flash('Add the digital price', 'error')
+    if (hasFile && !p.digital_file_path && p.active) return flash('Upload the download file, or untick "Visible in shop" to save a draft', 'error')
     setBusy(true)
     const row = {
       kind: isDigital ? 'digital' : 'physical',
       collection: p.collection || null,
-      digital_file_path: isDigital ? p.digital_file_path : null,
-      digital_file_name: isDigital ? p.digital_file_name : null,
+      series: p.series?.trim() || null,
+      badge: p.badge || null,
+      digital_file_path: hasFile ? p.digital_file_path : null,
+      digital_file_name: hasFile ? p.digital_file_name : null,
+      digital_price: !isDigital && p.sell_digital ? round2(p.digital_price) : null,
+      stock: !isDigital && String(p.stock).trim() !== '' ? Math.max(0, parseInt(p.stock, 10) || 0) : null,
       name: p.name.trim(), description: p.description?.trim() || null, price: round2(p.price),
       options: isDigital ? [] : String(p.options || '').split(',').map(s => s.trim()).filter(Boolean),
       image_urls: p.image_urls || [], bulk_pricing_enabled: p.bulk_pricing_enabled, active: p.active,
@@ -163,7 +210,7 @@ function ProductModal({ product, onClose, onSaved, flash }) {
   }
 
   return (
-    <Modal title={p.id ? 'Edit product' : isDigital ? 'New digital product' : 'New physical product'} onClose={onClose}>
+    <Modal title={p.id ? 'Edit product' : isDigital ? 'New digital product' : p.collection === STICKER_BAR.collection ? 'New sticker sheet' : 'New physical product'} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={styles.toggle}>
           {[['physical', '📦 Physical'], ['digital', '⬇️ Digital download']].map(([k, label]) => (
@@ -194,11 +241,30 @@ function ProductModal({ product, onClose, onSaved, flash }) {
             options={[{ value: '', label: 'No collection' }, ...COLLECTIONS.map(c => ({ value: c.key, label: c.name }))]} />
         </Field>
         <div style={ui.row}>
-          <Field label="Price ($)"><Input type="number" step="0.01" value={p.price} onChange={set('price')} /></Field>
+          <Field label="Series (optional)" hint={p.collection === STICKER_BAR.collection ? 'e.g. Journal, Block Party, Book Lover' : null}>
+            <Input list="series-list" value={p.series} onChange={set('series')} />
+            <datalist id="series-list">{seriesList.map(s => <option key={s} value={s} />)}</datalist>
+          </Field>
+          <Field label="Badge">
+            <Select value={p.badge} onChange={set('badge')} options={[{ value: '', label: 'None' }, ...STICKER_BAR.badges]} />
+          </Field>
+        </div>
+        <div style={ui.row}>
+          <Field label={isDigital ? 'Price ($)' : p.sell_digital ? 'Physical price ($)' : 'Price ($)'}><Input type="number" step="0.01" value={p.price} onChange={set('price')} /></Field>
+          {!isDigital && <Field label="Stock on hand" hint="Blank = don’t track"><Input type="number" min={0} value={p.stock} onChange={set('stock')} /></Field>}
           <Field label="Sort order"><Input type="number" value={p.sort_order} onChange={set('sort_order')} /></Field>
         </div>
         <Field label="Description"><TextArea rows={3} value={p.description || ''} onChange={set('description')} /></Field>
-        {isDigital ? (
+        {!isDigital && (
+          <label style={{ ...styles.check, ...styles.aiBox, padding: '12px 14px' }}>
+            <input type="checkbox" checked={p.sell_digital} onChange={set('sell_digital')} />
+            <span><strong>Also sell as a digital download</strong><br /><span style={ui.hint}>Customers pick digital or physical on the product page — great for sticker sheets.</span></span>
+          </label>
+        )}
+        {!isDigital && p.sell_digital && (
+          <Field label="Digital price ($)"><Input type="number" step="0.01" value={p.digital_price} onChange={set('digital_price')} /></Field>
+        )}
+        {hasFile && (
           <div>
             <div style={ui.label}>Download file</div>
             <label style={{ ...styles.fileDrop, opacity: fileUploading ? 0.6 : 1 }}>
@@ -212,12 +278,13 @@ function ProductModal({ product, onClose, onSaved, flash }) {
               Stored privately — buyers only get an expiring link after they pay.
             </div>
           </div>
-        ) : (
+        )}
+        {!isDigital && (
           <Field label="Options (comma separated)" hint='e.g. Matte, Glossy, Holographic — leave blank for none'>
             <Input value={p.options} onChange={set('options')} />
           </Field>
         )}
-        <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> Counts toward bulk discounts</label>
+        <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> {p.collection === STICKER_BAR.collection ? 'Counts toward Stack & Save' : 'Counts toward bulk discounts'}</label>
         <label style={styles.check}><input type="checkbox" checked={p.active} onChange={set('active')} /> Visible in shop</label>
         <Button block loading={busy} disabled={uploading || fileUploading} onClick={save}>Save product</Button>
         {p.id && <Button block variant="danger" onClick={remove}>Delete product</Button>}

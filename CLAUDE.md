@@ -26,19 +26,22 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 - Email HTML must escape user input with `esc()` / `escBr()` from `api/_lib/email.js`. Customer-facing emails pass `log: { orderId, kind }` to `sendEmail()` so they appear in the order's email history (`email_log` table, shown by `src/components/EmailPanel.jsx`). With `REPLY_DOMAIN` set, Reply-To becomes `order-<uuid>@REPLY_DOMAIN` so `api/resend-webhook.js` can match replies to orders; never forward into `REPLY_DOMAIN` (mail loop).
 - AI calculator: `supplyLines[].qty` is the **total batch quantity** — don't multiply by `item.qty`.
 - Column `stripe_payment_url` holds the latest Stripe Checkout link. Card payment is enabled per order by `'card'` in `payment_methods` (`'in_person'` is the other option). Each checkout is a `payments` row matched by `stripe_session_id`; the webhook claims the pending row once, so retries can't double-count.
-- **Sticker Bar** bookings come through the custom order form (`STICKER_BAR` in `src/brand.js`): `fulfillment = 'event'`, `quantity` = guests, `need_by` = event date, details in `orders.event_details` jsonb.
+- **Sticker Bar** is her sticker-sheet line (`STICKER_BAR` in `src/brand.js`, collection `sticker-bar`), not an event booking (`orders.event_details` is unused). A sheet is ONE physical product with `digital_price` + a private download file, so cart lines carry `format: 'digital'|'physical'`. Sticker sheets get Stack & Save tiers (`settings.sticker_bar_tiers`) instead of `BULK_TIERS`. Cart math is shared by the shop page and `priceCart()` through `src/lib/cart.js`, so change it there only.
+- `products.stock` (null = untracked) applies to physical units only. `priceCart()` refuses oversells, and `api/stripe-webhook.js` decrements via the `decrement_product_stock` RPC when a shop order is paid in full.
+- **Quote with AI** on a custom request opens `/dashboard/calculator?order=<id>`. `create-invoice` with `orderId` updates that order's quote in place (refused once payments exist). `estimate-from-description` takes `imageUrls` (public `order-files` only) and sends them to Claude as URL images.
 - **AI listing photos** must start from her real product photo when one exists, and the prompt must keep the product unchanged (only restyle the scene) so listings don't misrepresent what ships.
 - **Digital products** (`products.kind = 'digital'`): files go in the PRIVATE `digital-products` bucket; only `digital_file_path` is stored. Never select or return that path to customers (`get-products` omits it; `publicOrder()` strips `digitalFilePath` from `shop_cart`). Buyers get signed URLs only via `api/_handlers/get-downloads.js`, and only when paid in full. Shared logic lives in `api/_lib/downloads.js`.
 
 ## Key files
 | Path | Purpose |
 |------|---------|
-| `supabase/migrations/*.sql` | Tables, RLS (`is_admin()`), storage buckets. **Applied by hand** in the Supabase SQL Editor (no GitHub integration connected). `20261019…` and `20261020…` have been run; `20261021000000_stripe_payments.sql` must be run before Stripe goes live. |
+| `supabase/migrations/*.sql` | Tables, RLS (`is_admin()`), storage buckets. **Applied by hand** in the Supabase SQL Editor (no GitHub integration connected). `20261019…` and `20261020…` have been run; `20261021000000_stripe_payments.sql` must be run before Stripe goes live; `20261022000000_sticker_bar_sheets.sql` adds the Sticker Bar product columns, settings and her six draft sheets. |
 | `api/[action].js` | Router for all `/api/*` endpoints |
 | `api/stripe-webhook.js` | Stripe `checkout.session.completed` → marks payments paid (signature-verified) |
 | `api/resend-webhook.js` | Inbound customer replies (Resend `email.received`, signature-verified) → `email_log` (direction `in`) + forward to her inbox |
 | `api/_lib/*` | db/auth, email layout, push, Stripe, Claude client, tracking links, pricing, validation |
-| `src/pages/OrderDetail.jsx` | Admin order page (quote, payments, proofs, shipping, PO) |
+| `src/pages/OrderDetail.jsx` | Admin order page (quote, Quote with AI, payments, proofs, shipping, PO) |
+| `src/lib/cart.js` | Shared cart math: formats, Stack & Save, bulk tiers, codes, free shipping |
 | `src/components/ShipModal.jsx` | Enter carrier + tracking → "shipped" email |
 | `api/_handlers/send-customer-email.js` / `draft-email.js` | In-app email send / Claude polish (order page → Emails) |
 | `api/_handlers/write-listing.js` / `generate-listing-image.js` | Claude listing copy / Gemini listing photos (admin product editor) |

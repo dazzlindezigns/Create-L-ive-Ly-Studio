@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { supabase } from '../lib/supabase'
 import { fmt, round2 } from '../lib/money'
 import { BRAND } from '../brand'
 import Nav from '../components/Nav'
@@ -31,25 +32,56 @@ async function toBase64Image(file) {
   return { base64: dataUrl.split(',')[1], mediaType: 'image/jpeg', preview: dataUrl }
 }
 
+// A customer's custom request → the prompt for the AI estimate (she can edit it before re-running).
+function requestPrompt(o) {
+  return [
+    `Custom request: ${o.quantity || 1} × ${o.product_type}`,
+    o.size && `Size / dimensions: ${o.size}`,
+    o.finish && `Colors, material or finish: ${o.finish}`,
+    o.need_by && `Needed by: ${o.need_by}`,
+    o.fulfillment === 'shipping' ? 'Delivery: ship to the customer' : o.fulfillment === 'pickup' ? 'Delivery: local pickup' : null,
+    o.description && `What they asked for:\n${o.description.trim()}`,
+    o.notes && `Customer notes:\n${o.notes.trim()}`,
+  ].filter(Boolean).join('\n')
+}
+
+const isImageUrl = (u) => /\.(png|jpe?g|webp|gif)$/i.test(u.split('?')[0])
+const blankCust = { name: '', email: '', phone: '', title: '', depositType: 'percent', depositAmount: 50, turnaround: '', note: '' }
+
 function loadDraft() {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY)) } catch { return null }
 }
 
-export default function Calculator() {
+// Keyed by ?order= so switching between a request and a blank quote starts fresh.
+export default function CalculatorPage() {
+  const [params] = useSearchParams()
+  return <Calculator key={params.get('order') || 'blank'} />
+}
+
+function Calculator() {
   const navigate = useNavigate()
-  const draft = loadDraft()
+  // ?order=<id> prices an existing custom request: its details become the prompt and the
+  // result is saved back onto that order instead of creating a new one.
+  const [params] = useSearchParams()
+  const orderId = params.get('order')
+  const draft = orderId ? null : loadDraft()
+  const [order, setOrder] = useState(null)
+  const [orderError, setOrderError] = useState('')
   const [description, setDescription] = useState(draft?.description || '')
-  const [images, setImages] = useState([])
+  const [images, setImages] = useState([]) // [{ base64, mediaType, preview }] uploads here, or [{ url, preview }] from the request
   const [items, setItems] = useState(draft?.items?.length ? draft.items : [blankItem()])
   const [markup, setMarkup] = useState(draft?.markup ?? 60)
-  const [cust, setCust] = useState(draft?.cust || { name: '', email: '', phone: '', title: '', depositType: 'percent', depositAmount: 50, turnaround: '', note: '' })
+  const [cust, setCust] = useState(draft?.cust || blankCust)
   const [estimating, setEstimating] = useState(false)
   const [creating, setCreating] = useState(false)
   const [toast, flash] = useFlash()
+  const started = useRef(false)
 
   useEffect(() => {
+    if (orderId) return // the order itself is the saved state
     try { localStorage.setItem(SAVE_KEY, JSON.stringify({ description, items, markup, cust })) } catch {}
-  }, [description, items, markup, cust])
+  }, [orderId, description, items, markup, cust])
+
 
   const setItem = (id, patch) => setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it))
   const setSupply = (id, idx, patch) => setItems(prev => prev.map(it => it.id === id
@@ -62,19 +94,54 @@ export default function Calculator() {
     catch { flash('Could not read that image', 'error') }
   }
 
-  const estimate = async () => {
-    if (!description.trim() && !images.length) return flash('Describe the job or add a photo', 'error')
+  const runEstimate = async (desc, imgs) => {
+    if (!desc.trim() && !imgs.length) return flash('Describe the job or add a photo', 'error')
     setEstimating(true)
     try {
       const r = await api('estimate-from-description', {
         auth: true,
-        body: { description, mode: 'quote', images: images.map(({ base64, mediaType }) => ({ base64, mediaType })) },
+        body: {
+          description: desc, mode: 'quote',
+          images: imgs.filter(i => i.base64).map(({ base64, mediaType }) => ({ base64, mediaType })),
+          imageUrls: imgs.filter(i => i.url).map(i => i.url),
+        },
       })
       setItems(r.items.map(it => ({ ...it, id: crypto.randomUUID() })))
-      if (!cust.title && r.items[0]?.name) setCust(c => ({ ...c, title: r.items.length > 1 ? `${r.items[0].name} + more` : r.items[0].name }))
+      setCust(c => c.title || !r.items[0]?.name ? c : { ...c, title: r.items.length > 1 ? `${r.items[0].name} + more` : r.items[0].name })
       flash('Estimate ready — review and adjust ✨')
     } catch (e) { flash(e.message, 'error') } finally { setEstimating(false) }
   }
+  const estimate = () => runEstimate(description, images)
+
+  // Load the request once, prefill everything, and run the estimate (unless it was priced here before).
+  useEffect(() => {
+    if (!orderId || started.current) return
+    started.current = true
+    supabase.from('orders').select('*').eq('id', orderId).maybeSingle().then(({ data: o }) => {
+      if (!o) return setOrderError('Order not found')
+      setOrder(o)
+      if (o.source === 'shop') return setOrderError('Shop orders are priced by the shop.')
+      if (Number(o.amount_paid) > 0) setOrderError('This order already has payments, so its quote can’t be replaced here. Adjust the price on the order page.')
+      const prompt = requestPrompt(o)
+      const photos = (o.image_urls || []).filter(isImageUrl).slice(0, 4).map(url => ({ url, preview: url }))
+      setDescription(prompt)
+      setImages(photos)
+      setCust({
+        name: o.customer_name || '', email: o.customer_email || '', phone: o.customer_phone || '', title: o.product_type || '',
+        depositType: o.deposit_type || 'percent', depositAmount: o.deposit_amount ?? 50, turnaround: o.turnaround || '', note: o.quote_note || '',
+      })
+      const saved = o.quote_breakdown?.internal
+      if (saved?.items?.length) {
+        setItems(saved.items.map(it => ({ ...it, id: crypto.randomUUID() })))
+        if (saved.markup != null) setMarkup(saved.markup)
+        flash('Loaded the breakdown saved on this order')
+      } else if (Number(o.amount_paid) > 0 || o.source === 'shop') {
+        // nothing to estimate
+      } else {
+        runEstimate(prompt, photos)
+      }
+    })
+  }, [orderId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = items.map(it => {
     const cost = itemCost(it)
@@ -91,25 +158,27 @@ export default function Calculator() {
     if (!invoiceLines.length) return flash('Add at least one item with a name', 'error')
     setCreating(true)
     try {
-      const { orderId } = await api('create-invoice', {
+      const { orderId: savedId } = await api('create-invoice', {
         auth: true,
         body: {
+          orderId: orderId || undefined,
           customerName: cust.name, customerEmail: cust.email, customerPhone: cust.phone, title: cust.title,
           depositType: cust.depositType, depositAmount: cust.depositAmount, turnaround: cust.turnaround, note: cust.note,
           lines: invoiceLines,
           internal: { markup, items: items.map(({ id, ...rest }) => rest), totalCost: round2(totalCost) },
         },
       })
-      if (send) await api('send-quote', { auth: true, body: { orderId } })
-      localStorage.removeItem(SAVE_KEY)
-      navigate(`/dashboard/order/${orderId}`)
+      if (send) await api('send-quote', { auth: true, body: { orderId: savedId } })
+      if (!orderId) localStorage.removeItem(SAVE_KEY)
+      navigate(`/dashboard/order/${savedId}`)
     } catch (e) { flash(e.message, 'error'); setCreating(false) }
   }
 
   const reset = () => {
+    if (orderId) return navigate('/dashboard/calculator')
     if (!confirm('Clear the calculator?')) return
     setDescription(''); setImages([]); setItems([blankItem()])
-    setCust({ name: '', email: '', phone: '', title: '', depositType: 'percent', depositAmount: 50, turnaround: '', note: '' })
+    setCust(blankCust)
   }
 
   return (
@@ -120,17 +189,31 @@ export default function Calculator() {
             <div style={ui.eyebrow}>Pricing</div>
             <h1 style={ui.h1}>Calculator</h1>
           </div>
-          <Button small variant="ghost" onClick={reset}>Clear</Button>
+          <Button small variant="ghost" onClick={reset}>{orderId ? 'New blank quote' : 'Clear'}</Button>
         </header>
+
+        {orderId && (
+          <section style={{ ...ui.card, background: 'var(--card2)' }} className="no-print">
+            <div style={ui.eyebrow}>Pricing a custom request</div>
+            {order ? (
+              <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                <strong>{order.customer_name}</strong> · {order.product_type} × {order.quantity}
+                <div style={ui.muted}>The request below is the AI prompt — edit it and tap Estimate again if you want. Applying saves the quote to this order.</div>
+              </div>
+            ) : !orderError && <div style={ui.muted}>Loading the request…</div>}
+            {orderError && <div style={{ ...ui.error, marginTop: 8 }}>{orderError}</div>}
+            <Link to={`/dashboard/order/${orderId}`} style={{ display: 'inline-block', marginTop: 8, fontSize: 13, fontWeight: 700 }}>← Back to the order</Link>
+          </section>
+        )}
 
         {/* AI estimate */}
         <section style={ui.card} className="no-print">
           <h2 style={ui.h2}>✨ AI estimate</h2>
-          <TextArea rows={3} value={description} onChange={e => setDescription(e.target.value)}
-            placeholder='e.g. "12 personalized 3D printed keychains with names" or "Sticker Bar for 30 guests at a baby shower, 2 hours"' />
+          <TextArea rows={orderId ? 10 : 3} value={description} onChange={e => setDescription(e.target.value)}
+            placeholder='e.g. "12 personalized 3D printed keychains with names" or "50 custom 3-inch logo stickers, glossy"' />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
             {images.map((img, i) => (
-              <div key={i} style={{ position: 'relative' }}>
+              <div key={img.url || i} style={{ position: 'relative' }} title={img.url ? 'From the customer’s request' : undefined}>
                 <img src={img.preview} alt="" style={styles.thumb} />
                 <button onClick={() => setImages(images.filter((_, j) => j !== i))} style={styles.x}>×</button>
               </div>
@@ -196,14 +279,18 @@ export default function Calculator() {
 
         {/* Invoice */}
         <section style={ui.card} className="no-print">
-          <h2 style={ui.h2}>Quote / invoice</h2>
+          <h2 style={ui.h2}>{orderId ? 'Quote for this request' : 'Quote / invoice'}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {orderId ? (
+              <div style={ui.muted}>For <strong>{cust.name}</strong> &lt;{cust.email}&gt;</div>
+            ) : (<>
             <Field label="Title"><Input value={cust.title} onChange={e => setCust({ ...cust, title: e.target.value })} placeholder="e.g. Custom mugs for Bloom Bakery" /></Field>
             <Field label="Customer name"><Input value={cust.name} onChange={e => setCust({ ...cust, name: e.target.value })} /></Field>
             <div style={ui.row}>
               <Field label="Email"><Input type="email" value={cust.email} onChange={e => setCust({ ...cust, email: e.target.value })} /></Field>
               <Field label="Phone"><Input value={cust.phone} onChange={e => setCust({ ...cust, phone: e.target.value })} /></Field>
             </div>
+            </>)}
             <div style={ui.row}>
               <Field label="Deposit"><Select value={cust.depositType} onChange={e => setCust({ ...cust, depositType: e.target.value })} options={[{ value: 'percent', label: '% deposit' }, { value: 'fixed', label: '$ deposit' }, { value: 'full', label: 'Pay in full' }]} /></Field>
               {cust.depositType !== 'full' && <Field label={cust.depositType === 'percent' ? '%' : '$'}><Input type="number" value={cust.depositAmount} onChange={e => setCust({ ...cust, depositAmount: e.target.value })} /></Field>}
@@ -211,8 +298,13 @@ export default function Calculator() {
             <Field label="Turnaround"><Input value={cust.turnaround} onChange={e => setCust({ ...cust, turnaround: e.target.value })} /></Field>
             <Field label="Note to customer"><TextArea rows={2} value={cust.note} onChange={e => setCust({ ...cust, note: e.target.value })} /></Field>
             <div style={ui.row}>
-              <Button loading={creating} onClick={() => create(true)}>Create & email</Button>
-              <Button variant="ghost" disabled={creating} onClick={() => create(false)}>Create only</Button>
+              {orderId ? (<>
+                <Button loading={creating} disabled={!order || !!orderError} onClick={() => create(true)}>Apply & send quote</Button>
+                <Button variant="ghost" disabled={creating || !order || !!orderError} onClick={() => create(false)}>Apply to order</Button>
+              </>) : (<>
+                <Button loading={creating} onClick={() => create(true)}>Create & email</Button>
+                <Button variant="ghost" disabled={creating} onClick={() => create(false)}>Create only</Button>
+              </>)}
               <Button variant="ghost" onClick={() => window.print()}>Print / PDF</Button>
             </div>
           </div>

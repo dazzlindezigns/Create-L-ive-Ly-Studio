@@ -2,9 +2,9 @@
 
 Custom orders, shop and studio management for Create(L)ive(Ly) Studio — 3D prints (Labs), digital papers (Paper Studio), vendor essentials (Vendors) and empowering merch (Elevate). Modeled on the MakerQue (DCIoS) app.
 
-**Customer side:** website homepage at the main address (`/`) with her collections, Sticker Bar and about sections; custom order form (`/custom`, opened from "Request a custom item" / "Book the Sticker Bar"), quote review with e-sign + Stripe payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
+**Customer side:** website homepage at the main address (`/`) with her collections, Sticker Bar and about sections; custom order form (`/custom`, opened from "Request a custom item"), quote review with e-sign + Stripe payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts, Sticker Bar Stack & Save, free-shipping threshold and discount codes (`/shop/products`) selling physical products, digital downloads, and Sticker Bar sheets in either format, and a downloads page for paid digital orders (`/downloads/:id`).
 
-**Admin side** (login required): dashboard with status pipeline, live updates, shop open/closed toggle and push notifications (`/dashboard`), full order management with proofs, payments, shipping/tracking emails and admin-only PO numbers (`/dashboard/order/:id`), AI price calculator + invoices (`/dashboard/calculator`), products with a Claude listing writer and Gemini photo generator, discount codes and shop settings (`/dashboard/products`).
+**Admin side** (login required): dashboard with status pipeline, live updates, shop open/closed toggle and push notifications (`/dashboard`), full order management with proofs, payments, shipping/tracking emails and admin-only PO numbers (`/dashboard/order/:id`), AI price calculator + invoices (`/dashboard/calculator`, or **Quote with AI** on any custom request), products with a Claude listing writer and Gemini photo generator, discount codes and shop settings (`/dashboard/products`).
 
 ## Stack
 React 18 + Vite · React Router v6 · inline style objects + CSS variables · Supabase · Vercel serverless functions · Stripe Checkout · Resend · web-push · Anthropic API (`claude-opus-4-8`) · Google Gemini image API
@@ -47,8 +47,17 @@ npx vercel dev               # runs the Vite app AND /api functions
 - **One function for all routes.** `api/[action].js` dispatches to `api/_handlers/*.js`, so the whole API counts as 3 functions on Vercel's Hobby plan (limit 12). `api/stripe-webhook.js` and `api/resend-webhook.js` are separate because they need the raw request body.
 - **Payments:** each Stripe Checkout Session is recorded in `payments`; the webhook matches it by session ID, updates `amount_paid`, and moves the order to `confirmed`. Cash/Zelle/etc. can be recorded manually on the order page.
 
-## Sticker Bar bookings
-The custom order form includes **Sticker Bar (event booking)**. Choosing it swaps the product fields for event fields: date, start time, length, guest count, event type, venue and address. These are saved in `orders.event_details`, the guest count goes in `quantity`, and the event date goes in `need_by`. Booking requests get their own email subject and push notification, and they skip pickup/shipping. Link straight to the booking form with `/?type=sticker-bar`.
+## Sticker Bar
+Her sticker-sheet line (`STICKER_BAR` in `src/brand.js`; shop link `/shop/products?c=sticker-bar`). It has its own homepage section with the Sticker Bar logo, live sheets, Stack & Save tiers and perks.
+- **One listing, two formats.** In **Shop → + Sticker sheet**, set the vinyl price, tick **Also sell as a digital download**, set the digital price and upload the printable file. Customers choose Digital or Vinyl on the product page. A sheet with no file uploaded yet sells as vinyl only.
+- **Stock on hand** (physical only, optional). Checkout refuses more than she has, the shop shows "Only N left" and "Sold out" (the download stays available), and stock drops when an order is paid in full.
+- **Badge** (New, Sale, Bestseller, Back in stock, Limited) and **Series** (Journal, Block Party, Book Lover…) show on the product card.
+- **Stack & Save:** % off every sheet once the cart has N+ sheets, mixing any sheets and both formats (default 3+ 10%, 5+ 15%, 8+ 20%; edit in Shop → Products). Sticker sheets use these tiers instead of the general bulk tiers.
+- **Free shipping** when the order (after discounts) reaches `shop_free_shipping_over` (default $35; 0 turns it off). This applies to the whole shop.
+- `20261022000000_sticker_bar_sheets.sql` adds her first six sheets as **hidden drafts**. Open each one, upload its file, then tick "Visible in shop".
+
+## Quote a custom request with AI
+On a custom request's order page, **Quote & payment → Quote with AI** opens the calculator with the request already written as the prompt (product, quantity, size, finish, need-by date, delivery, description and notes) and the customer's uploaded photos attached, then runs the estimate. She reviews supplies, labor and markup, then taps **Apply & send quote** (or **Apply to order**). This saves the price, line items, deposit and turnaround onto that same order, not a new one. The breakdown is kept, so **Open in calculator** later picks up where she left off. Orders with payments already received can't be re-quoted this way.
 
 ## Digital products
 - In **Shop → + Digital**, add a name, price and preview images, then upload the file buyers will receive (PDF, ZIP, PNG, SVG, cut files, Procreate, fonts, etc., up to 50 MB; zip multiple files together).

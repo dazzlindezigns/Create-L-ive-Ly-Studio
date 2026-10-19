@@ -1,0 +1,62 @@
+// Shop cart math shared by the browser (display) and api/_lib/pricing.js (what is charged).
+// Keep it pure — the server always re-prices from the products table before charging.
+import { round2 } from './money.js'
+import { getBulkTier, STICKER_BAR } from '../brand.js'
+
+const sum = (arr, fn) => arr.reduce((s, x) => s + fn(x), 0)
+
+// Settings value → clean tiers, highest first. Falls back to the brand defaults.
+export function normalizeTiers(raw) {
+  const list = (Array.isArray(raw) ? raw : [])
+    .map(t => ({ min: parseInt(t?.min, 10), pct: Number(t?.pct) }))
+    .filter(t => t.min >= 2 && t.pct > 0 && t.pct <= 90)
+    .slice(0, 6)
+  return (list.length ? list : STICKER_BAR.stackTiers).slice().sort((a, b) => b.min - a.min)
+}
+
+export const tierFor = (tiers, qty) => normalizeTiers(tiers).find(t => qty >= t.min) || null
+
+// Which price a product line uses. Digital-only products are always digital; a physical
+// product offers a download too when it has a digital price and an uploaded file.
+export const offersDigital = (p) => p.kind === 'digital' || (p.digital_price != null && Boolean(p.digital_file_name || p.digital_file_path))
+export const offersPhysical = (p) => p.kind !== 'digital'
+export function lineFormat(p, wanted) {
+  if (p.kind === 'digital') return 'digital'
+  return wanted === 'digital' && offersDigital(p) ? 'digital' : 'physical'
+}
+export const unitPrice = (p, format) => round2(format === 'digital' && p.kind !== 'digital' ? p.digital_price : p.price)
+export const isSticker = (p) => p.collection === STICKER_BAR.collection
+
+// code = discount_codes row shape: { discount_type: 'percent'|'fixed', discount_value }
+export function discountAmount(code, base) {
+  if (!code) return 0
+  const v = Number(code.discount_value) || 0
+  return code.discount_type === 'percent'
+    ? round2(base * Math.min(v, 100) / 100)
+    : round2(Math.min(v, base))
+}
+
+// lines: [{ itemTotal, quantity, bulkEligible, sticker }]
+// Sticker Bar sheets (both formats) count toward Stack & Save; everything else toward the bulk tiers.
+export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, freeShippingOver = 0 } = {}) {
+  const subtotal = round2(sum(lines, l => l.itemTotal))
+  const eligible = lines.filter(l => l.bulkEligible)
+  const stack = eligible.filter(l => l.sticker)
+  const bulk = eligible.filter(l => !l.sticker)
+
+  const stackTier = tierFor(stackTiers, sum(stack, l => l.quantity))
+  const stackDiscount = stackTier ? round2(sum(stack, l => l.itemTotal) * stackTier.pct / 100) : 0
+  const tier = getBulkTier(sum(bulk, l => l.quantity))
+  const bulkDiscount = tier ? round2(sum(bulk, l => l.itemTotal) * tier.pct / 100) : 0
+
+  const afterTiers = round2(subtotal - stackDiscount - bulkDiscount)
+  const codeDiscount = discountAmount(code, afterTiers)
+  const merchandise = round2(afterTiers - codeDiscount)
+
+  const fee = round2(shippingFee)
+  const threshold = Number(freeShippingOver) || 0
+  const freeShipping = fee > 0 && threshold > 0 && merchandise >= threshold
+  const shipping = freeShipping ? 0 : fee
+  const total = Math.max(0, round2(merchandise + shipping))
+  return { subtotal, stackTier, stackDiscount, tier, bulkDiscount, codeDiscount, merchandise, freeShipping, shipping, total }
+}

@@ -4,13 +4,15 @@ import { createCheckoutSession } from '../_lib/stripe.js'
 import { notifyAdmins } from '../_lib/push.js'
 import { storageUrlsOnly, cleanAddress } from '../_lib/validate.js'
 import { fmt } from '../../src/lib/money.js'
+import { STICKER_BAR } from '../../src/brand.js'
 
 export default async function handler(req, res) {
   requireMethod(req, 'POST')
   const b = req.body || {}
   const supabase = db()
 
-  const { data: settingsRows } = await supabase.from('settings').select('key, value').in('key', ['shop_open', 'shop_shipping_fee'])
+  const { data: settingsRows } = await supabase.from('settings').select('key, value')
+    .in('key', ['shop_open', 'shop_shipping_fee', 'shop_free_shipping_over', 'sticker_bar_tiers'])
   const settings = Object.fromEntries((settingsRows || []).map(r => [r.key, r.value]))
   if (settings.shop_open === false || settings.shop_open === 'false') throw new HttpError(400, 'The shop is closed right now')
 
@@ -18,21 +20,27 @@ export default async function handler(req, res) {
   const customerEmail = String(b.customerEmail || '').trim().toLowerCase()
   if (!customerName || !isEmail(customerEmail)) throw new HttpError(400, 'Name and a valid email are required')
 
-  // Price once to learn whether anything physical is in the cart, then again with shipping if needed.
-  let cart = await priceCart(b.items, b.discountCode, 0)
+  const price = (shipping) => priceCart(b.items, b.discountCode, {
+    shippingFee: shipping ? Number(settings.shop_shipping_fee) || 0 : 0,
+    freeShippingOver: Number(settings.shop_free_shipping_over) || 0,
+    stackTiers: settings.sticker_bar_tiers,
+  })
+  const wantsShipping = b.fulfillment === 'shipping'
+  let cart = await price(wantsShipping)
   const hasPhysical = cart.lines.some(l => l.kind === 'physical')
+  // Download-only carts never pay shipping.
+  if (!hasPhysical && wantsShipping) cart = await price(false)
 
-  const fulfillment = !hasPhysical ? 'digital' : b.fulfillment === 'shipping' ? 'shipping' : 'pickup'
+  const fulfillment = !hasPhysical ? 'digital' : wantsShipping ? 'shipping' : 'pickup'
   const shippingAddress = fulfillment === 'shipping' ? cleanAddress(b.shippingAddress, customerName) : null
   if (fulfillment === 'shipping' && !shippingAddress) throw new HttpError(400, 'Complete shipping address is required')
 
-  const shippingFee = fulfillment === 'shipping' ? Number(settings.shop_shipping_fee) || 0 : 0
-  if (shippingFee) cart = await priceCart(b.items, b.discountCode, shippingFee)
-
   const lines = cart.lines.map(l => `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' [digital download]' : ` × ${l.quantity}`} — ${fmt(l.itemTotal)}`)
+  if (cart.stackTier) lines.push(`${STICKER_BAR.name} Stack & Save ${cart.stackTier.pct}% off (−${fmt(cart.stackDiscount)})`)
   if (cart.tier) lines.push(`Bulk discount ${cart.tier.badge} (−${fmt(cart.bulkDiscount)})`)
   if (cart.discount) lines.push(`Code ${cart.discount.code} (−${fmt(cart.codeDiscount)})`)
   if (cart.shipping) lines.push(`Shipping ${fmt(cart.shipping)}`)
+  if (cart.freeShipping) lines.push('Free shipping')
 
   const productType = cart.lines.length === 1 ? cart.lines[0].productName : `Shop order (${cart.lines.length} items)`
   const notes = String(b.notes || '').trim().slice(0, 2000)
@@ -58,7 +66,7 @@ export default async function handler(req, res) {
     shop_discount_amount: cart.codeDiscount || null,
     image_urls: storageUrlsOnly(b.designFiles, 'order-files'),
     quote_breakdown: {
-      lines: cart.lines.map(l => ({ description: `${l.productName}${l.option ? ` (${l.option})` : ''}`, qty: l.quantity, unitPrice: l.unitPrice })),
+      lines: cart.lines.map(l => ({ description: `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' — digital download' : ''}`, qty: l.quantity, unitPrice: l.unitPrice })),
     },
     customer_signature: customerName,
     terms_agreed_at: new Date().toISOString(),

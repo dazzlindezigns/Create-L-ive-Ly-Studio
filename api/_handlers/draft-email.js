@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
   const facts = [
     `Customer first name: ${String(order.customer_name || '').split(' ')[0]}`,
-    `Order: ${order.product_type}${order.fulfillment === 'event' ? ` (event on ${order.need_by})` : order.need_by ? ` — needed by ${order.need_by}` : ''}`,
+    `Order: ${order.product_type}${order.need_by ? ` — needed by ${order.need_by}` : ''}`,
     `Status: ${order.status}`,
     order.price != null ? `Total: ${fmt(order.price)}; paid so far: ${fmt(order.amount_paid || 0)}` : 'Not quoted yet',
     order.tracking_number ? `Shipped via ${order.shipping_carrier || 'carrier'}, tracking ${order.tracking_number}` : null,

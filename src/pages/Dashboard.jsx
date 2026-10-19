@@ -290,7 +290,6 @@ export default function Dashboard() {
                   {o.source === 'invoice' && <span style={styles.pill}>Invoice</span>}
                   {o.fulfillment === 'shipping' && <span style={styles.pill}>Ships</span>}
                   {o.fulfillment === 'digital' && <span style={styles.pill}>Digital</span>}
-                  {o.fulfillment === 'event' && <span style={{ ...styles.pill, background: 'var(--primary)', color: '#fff' }}>Sticker Bar</span>}
                   {o.po_number && <span style={styles.pill}>PO {o.po_number}</span>}
                   {o.need_by && <span style={{ color: dueColor(o.need_by), fontWeight: 600 }}>Due {new Date(o.need_by + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                   <span style={{ marginLeft: 'auto', fontWeight: 700, color: 'var(--dark)' }}>{o.price != null ? fmt(o.price) : 'Needs quote'}</span>

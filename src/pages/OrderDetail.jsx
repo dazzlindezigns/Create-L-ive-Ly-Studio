@@ -85,22 +85,13 @@ export default function OrderDetail() {
         <section style={ui.card}>
           <h2 style={ui.h2}>Request</h2>
           <dl style={styles.dl}>
-            <Row k={order.event_details ? 'Booking' : 'Product'} v={order.event_details ? `${order.product_type} · ${order.quantity} guests` : `${order.product_type} × ${order.quantity}`} />
+            <Row k="Product" v={`${order.product_type} × ${order.quantity}`} />
             <Row k="Size" v={order.size} />
             <Row k="Finish" v={order.finish} />
-            <Row k={order.event_details ? 'Event date' : 'Need by'} v={order.need_by && new Date(order.need_by + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} />
+            <Row k="Need by" v={order.need_by && new Date(order.need_by + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} />
             <Row k="Delivery" v={order.fulfillment === 'shipping'
               ? `Ship to ${[order.shipping_address?.street, order.shipping_address?.street2, order.shipping_address?.city].filter(Boolean).join(', ')}, ${order.shipping_address?.state || ''} ${order.shipping_address?.zip || ''}`
-              : order.fulfillment === 'digital' ? 'Digital download (nothing to ship)'
-              : order.fulfillment === 'event' ? 'On-site Sticker Bar' : BRAND.pickupLabel} />
-            {order.event_details && <>
-              <Row k="Time" v={[order.event_details.startTime && formatTime(order.event_details.startTime), order.event_details.duration].filter(Boolean).join(' · ')} />
-              <Row k="Event" v={order.event_details.eventType} />
-              <Row k="Venue" v={order.event_details.venue} />
-              <Row k="Address" v={order.event_details.address && (
-                <a href={`https://maps.google.com/?q=${encodeURIComponent(order.event_details.address)}`} target="_blank" rel="noreferrer">{order.event_details.address}</a>
-              )} />
-            </>}
+              : order.fulfillment === 'digital' ? 'Digital download (nothing to ship)' : BRAND.pickupLabel} />
           </dl>
           {order.description && <p style={styles.pre}>{order.description}</p>}
           {order.notes && <><div style={{ ...ui.label, marginTop: 12 }}>Customer notes</div><p style={styles.pre}>{order.notes}</p></>}
@@ -134,7 +125,7 @@ export default function OrderDetail() {
         )}
 
         {/* Fulfillment */}
-        {!['digital', 'event'].includes(order.fulfillment) && (
+        {order.fulfillment !== 'digital' && (
         <section style={ui.card}>
           <h2 style={ui.h2}>{order.fulfillment === 'shipping' ? 'Shipping' : 'Pickup'}</h2>
           {order.tracking_number ? (
@@ -226,6 +217,7 @@ function AdminOnly({ order, update }) {
 
 // ── Quote + payments ────────────────────────────────────────────────────────
 function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRecordPayment }) {
+  const navigate = useNavigate()
   const [q, setQ] = useState({
     price: order.price ?? '',
     deposit_type: order.deposit_type || 'percent',
@@ -261,6 +253,8 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
   const preview = { ...order, ...fields() }
   const { paid, remaining } = paymentOptions(preview)
   const locked = Number(order.amount_paid) > 0
+  const fromCalculator = Boolean(order.quote_breakdown?.internal?.items?.length)
+  const canUseCalculator = !locked && order.source !== 'shop'
 
   return (
     <section style={ui.card}>
@@ -268,6 +262,20 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
         <h2 style={ui.h2}>Quote & payment</h2>
         {order.quote_sent_at && <span style={ui.muted}>Sent {new Date(order.quote_sent_at).toLocaleDateString()}</span>}
       </div>
+
+      {canUseCalculator && (
+        <div style={styles.aiQuote}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>✨ {fromCalculator ? 'Priced with the AI calculator' : 'Price this request with the AI calculator'}</div>
+            <div style={ui.hint}>{fromCalculator
+              ? 'Open it again to adjust supplies, labor or markup.'
+              : 'Claude reads the request and the customer’s photos, estimates supplies and labor, and you review before anything is sent.'}</div>
+          </div>
+          <Button small variant="gradient" onClick={() => navigate(`/dashboard/calculator?order=${order.id}`)}>
+            {fromCalculator ? 'Open in calculator' : 'Quote with AI'}
+          </Button>
+        </div>
+      )}
 
       {order.quote_breakdown?.lines?.length > 0 && (
         <div style={{ marginBottom: 12 }}>
@@ -478,7 +486,7 @@ function EditModal({ order, onClose, onSave }) {
           <Field label="Need by"><Input type="date" value={f.need_by} onChange={set('need_by')} /></Field>
         </div>
         <Field label="Description"><TextArea value={f.description} onChange={set('description')} /></Field>
-        <Field label="Fulfillment"><Select value={f.fulfillment} onChange={set('fulfillment')} options={[{ value: 'pickup', label: 'Pickup' }, { value: 'shipping', label: 'Shipping' }, { value: 'event', label: 'Sticker Bar (on-site)' }, ...(f.fulfillment === 'digital' ? [{ value: 'digital', label: 'Digital download' }] : [])]} /></Field>
+        <Field label="Fulfillment"><Select value={f.fulfillment} onChange={set('fulfillment')} options={[{ value: 'pickup', label: 'Pickup' }, { value: 'shipping', label: 'Shipping' }, ...(f.fulfillment === 'digital' ? [{ value: 'digital', label: 'Digital download' }] : [])]} /></Field>
         {f.fulfillment === 'shipping' && (
           <>
             <Field label="Street"><Input value={f.street} onChange={set('street')} /></Field>
@@ -510,11 +518,6 @@ function FileGrid({ urls }) {
   )
 }
 
-const formatTime = (t) => {
-  const [h, m] = t.split(':').map(Number)
-  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-}
-
 const Row = ({ k, v }) => v ? (
   <>
     <dt style={{ color: 'var(--muted)', fontSize: 13 }}>{k}</dt>
@@ -523,6 +526,7 @@ const Row = ({ k, v }) => v ? (
 ) : null
 
 const styles = {
+  aiQuote: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 14, padding: 12, marginBottom: 14 },
   dl: { display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 8, columnGap: 12 },
   pre: { whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6, marginTop: 10, color: 'var(--mid)' },
   line: { display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, padding: '6px 0', borderBottom: '1px solid var(--border)' },

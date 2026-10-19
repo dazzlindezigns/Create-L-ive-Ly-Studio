@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { requireMethod, requireAdmin, HttpError, BRAND } from '../_lib/core.js'
 import { parseWithClaude } from '../_lib/anthropic.js'
-import { storageUrlsOnly } from '../_lib/validate.js'
+import { productPhotoUrls } from '../_lib/validate.js'
 import { COLLECTIONS } from '../../src/brand.js'
 
 const ListingSchema = z.object({
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   const b = req.body || {}
 
   const notes = String(b.notes || '').trim().slice(0, 3000)
-  const imageUrls = storageUrlsOnly(b.imageUrls, 'product-images')?.slice(0, 4) || []
+  const imageUrls = productPhotoUrls(b.imageUrls).slice(0, 4)
   if (!notes && !String(b.name || '').trim() && !imageUrls.length) throw new HttpError(400, 'Add a few notes or a photo first')
 
   const collection = COLLECTIONS.find(c => c.key === b.collection)
