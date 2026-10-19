@@ -217,7 +217,7 @@ const s = {
   sheetName: { display: 'block', padding: '6px 8px 8px', fontSize: 11, fontWeight: 700, lineHeight: 1.35 },
   perk: { background: 'rgba(255,255,255,0.85)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px' },
   partner: { borderRadius: 22, border: '1px solid var(--border)', background: '#fff', padding: 'clamp(16px, 3vw, 28px)', boxShadow: '0 12px 35px rgba(148,82,103,0.06)' },
-  partnerImg: { width: '100%', maxWidth: 460, height: 'auto', display: 'block', margin: '0 auto', borderRadius: 16 },
+  partnerImg: { width: '100%', maxWidth: 400, height: 'auto', display: 'block', margin: '0 auto', borderRadius: 16 },
   disclosure: { fontSize: 13, fontStyle: 'italic', color: 'var(--muted)', lineHeight: 1.7, borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '12px 0', margin: '4px 0 18px' },
   about: { borderRadius: 22, border: '1px solid var(--border)', background: 'rgba(255,255,255,0.75)', padding: '28px 26px' },
 }
