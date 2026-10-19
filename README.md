@@ -15,7 +15,7 @@ Everything brand-related lives in **`src/brand.js`**: name, colors and fonts (ta
 ## Setup
 
 1. **Supabase**
-   - Create a project and connect it to this GitHub repo (Supabase → Project Settings → Integrations → GitHub, Supabase directory `supabase`, production branch `main`, **Deploy to production** on). It applies everything in `supabase/migrations/` automatically when `main` changes. Without the integration, paste each migration into the SQL Editor in filename order.
+   - Create a project. In **SQL Editor**, run each file in `supabase/migrations/` in filename order. Every file is safe to re-run. When a new migration file is added later, run just that file. (Optional: connecting Supabase's GitHub integration with **Deploy to production** on would apply new files automatically on push to `main`.)
    - Authentication → Users → add the owner's login, then:
      ```sql
      insert into admin_users (user_id, email)
