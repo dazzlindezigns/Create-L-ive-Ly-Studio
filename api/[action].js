@@ -1,7 +1,7 @@
 // Single serverless entry point for every /api/<action> route.
 // Vercel's Hobby plan allows 12 functions per deployment, so instead of one file per
 // endpoint we dispatch to api/_handlers/<action>.js (underscore folders are not deployed
-// as their own functions). /api/square-webhook stays separate because it needs the raw body.
+// as their own functions). /api/stripe-webhook and /api/resend-webhook stay separate because they need the raw body.
 import { HttpError } from './_lib/core.js'
 
 const routes = {

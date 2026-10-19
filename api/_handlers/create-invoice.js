@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     quote_breakdown: { lines, internal: b.internal || null },
     source: b.asQuote ? 'form' : 'invoice',
     status: 'pending',
-    payment_methods: ['square'],
+    payment_methods: ['card'],
   }).select('id').single()
   if (error) throw new HttpError(500, error.message)
 

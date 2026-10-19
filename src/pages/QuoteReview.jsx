@@ -24,7 +24,7 @@ export default function QuoteReview() {
   const load = useCallback(() => api(`get-order?id=${encodeURIComponent(orderId)}`).then(setOrder).catch(e => setError(e.message)), [orderId])
   useEffect(() => { load() }, [load])
 
-  // After the Square redirect, poll briefly until the webhook records the payment.
+  // After the Stripe redirect, poll briefly until the webhook records the payment.
   const [waiting, setWaiting] = useState(justPaid)
   useEffect(() => {
     if (!justPaid || !order) return
@@ -49,7 +49,7 @@ export default function QuoteReview() {
   const isShop = order.source === 'shop'
   const isInvoice = order.source === 'invoice'
   const { paid, remaining, deposit, options } = paymentOptions(order)
-  const methods = order.payment_methods || ['square']
+  const methods = order.payment_methods || ['card']
   const inactive = ['cancelled', 'declined'].includes(order.status)
 
   return (
@@ -115,11 +115,11 @@ export default function QuoteReview() {
       {!inactive && order.price != null && order.terms_agreed_at && remaining > 0 && !waiting && (
         <div style={ui.card}>
           <h2 style={ui.h2}>Payment</h2>
-          {methods.includes('square') && options.map(o => <PayButton key={o.kind} orderId={order.id} option={o} primary={o.kind !== 'full' || options.length === 1} />)}
+          {methods.includes('card') && options.map(o => <PayButton key={o.kind} orderId={order.id} option={o} primary={o.kind !== 'full' || options.length === 1} />)}
           {methods.includes('in_person') && (
             <p style={{ ...ui.muted, marginTop: 12 }}>{order._inPersonNote || 'Prefer to pay in person? Reply to your quote email and we will set it up.'}</p>
           )}
-          {methods.includes('square') && <p style={{ ...ui.muted, fontSize: 12, textAlign: 'center', marginTop: 10 }}>🔒 Secure checkout by Square</p>}
+          {methods.includes('card') && <p style={{ ...ui.muted, fontSize: 12, textAlign: 'center', marginTop: 10 }}>🔒 Secure checkout by Stripe</p>}
         </div>
       )}
 

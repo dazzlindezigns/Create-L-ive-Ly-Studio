@@ -195,7 +195,7 @@ function DigitalSection({ order, flash, onCopy }) {
         <Button variant="secondary" small loading={sending} disabled={!paidInFull} onClick={resend}>Email download link</Button>
         <Button variant="ghost" small onClick={onCopy}>Copy download link</Button>
       </div>
-      {!paidInFull && <div style={ui.hint}>The link unlocks automatically after a Square payment. If they paid another way, record the payment first, then email the link.</div>}
+      {!paidInFull && <div style={ui.hint}>The link unlocks automatically after a card payment. If they paid another way, record the payment first, then email the link.</div>}
     </section>
   )
 }
@@ -225,7 +225,7 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
     deposit_amount: order.deposit_amount ?? 50,
     turnaround: order.turnaround || '',
     quote_note: order.quote_note || '',
-    square: (order.payment_methods || ['square']).includes('square'),
+    card: (order.payment_methods || ['card']).includes('card'),
     in_person: (order.payment_methods || []).includes('in_person'),
   })
   const [sending, setSending] = useState(false)
@@ -237,7 +237,7 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
     deposit_amount: q.deposit_type === 'full' ? round2(q.price) : Number(q.deposit_amount) || 0,
     turnaround: q.turnaround.trim() || null,
     quote_note: q.quote_note.trim() || null,
-    payment_methods: [q.square && 'square', q.in_person && 'in_person'].filter(Boolean),
+    payment_methods: [q.card && 'card', q.in_person && 'in_person'].filter(Boolean),
   })
 
   const send = async () => {
@@ -289,7 +289,7 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
         <Field label="Turnaround"><Input placeholder="e.g. 7–10 business days after proof approval" value={q.turnaround} onChange={set('turnaround')} /></Field>
         <Field label="Note to customer"><TextArea rows={3} value={q.quote_note} onChange={set('quote_note')} /></Field>
         <div style={{ ...ui.row, gap: 18 }}>
-          <label style={styles.check}><input type="checkbox" checked={q.square} onChange={set('square')} /> Card (Square)</label>
+          <label style={styles.check}><input type="checkbox" checked={q.card} onChange={set('card')} /> Card (Stripe)</label>
           <label style={styles.check}><input type="checkbox" checked={q.in_person} onChange={set('in_person')} /> In person / cash</label>
         </div>
         <div style={ui.row}>
@@ -343,7 +343,7 @@ function PaymentModal({ order, onClose, onSaved, flash }) {
   }
   return (
     <Modal title="Record a payment" onClose={onClose}>
-      <p style={{ ...ui.muted, marginBottom: 12 }}>For cash, Zelle, Cash App, etc. — anything paid outside Square.</p>
+      <p style={{ ...ui.muted, marginBottom: 12 }}>For cash, Zelle, Cash App, etc. — anything paid outside Stripe.</p>
       <Field label="Amount ($)"><Input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></Field>
       <Button block loading={busy} onClick={save} style={{ marginTop: 14 }}>Record payment</Button>
     </Modal>

@@ -2,12 +2,12 @@
 
 Custom orders, shop and studio management for Create(L)ive(Ly) Studio — 3D prints (Labs), digital papers (Paper Studio), vendor essentials (Vendors) and empowering merch (Elevate). Modeled on the MakerQue (DCIoS) app.
 
-**Customer side:** custom order form (`/`), quote review with e-sign + Square payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
+**Customer side:** custom order form (`/`), quote review with e-sign + Stripe payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
 
 **Admin side** (login required): dashboard with status pipeline, live updates, shop open/closed toggle and push notifications (`/dashboard`), full order management with proofs, payments, shipping/tracking emails and admin-only PO numbers (`/dashboard/order/:id`), AI price calculator + invoices (`/dashboard/calculator`), products with a Claude listing writer and Gemini photo generator, discount codes and shop settings (`/dashboard/products`).
 
 ## Stack
-React 18 + Vite · React Router v6 · inline style objects + CSS variables · Supabase · Vercel serverless functions · Square Payment Links · Resend · web-push · Anthropic API (`claude-opus-4-8`) · Google Gemini image API
+React 18 + Vite · React Router v6 · inline style objects + CSS variables · Supabase · Vercel serverless functions · Stripe Checkout · Resend · web-push · Anthropic API (`claude-opus-4-8`) · Google Gemini image API
 
 ## Branding
 Everything brand-related lives in **`src/brand.js`**: name, colors and fonts (taken from her Payhip theme), collections, custom-order product types, bulk tiers and quote terms. Still to fill in there: `ownerFirstName`, `location`, `pickupLabel` and `timezone`. Static brand files: `public/manifest.json`, `public/logo.png` (her transparent logo) and the icons/OG image generated from it.
@@ -21,9 +21,9 @@ Everything brand-related lives in **`src/brand.js`**: name, colors and fonts (ta
      insert into admin_users (user_id, email)
      select id, email from auth.users where email = 'owner@example.com';
      ```
-2. **Square** (Developer Dashboard)
-   - Copy the access token → `SQUARE_SECRET_KEY`, the location ID → `SQUARE_LOCATION_ID`. Start with `SQUARE_ENVIRONMENT=sandbox`.
-   - Webhooks → add `https://<domain>/api/square-webhook` for `payment.created` and `payment.updated`; copy the signature key → `SQUARE_WEBHOOK_SIGNATURE_KEY`.
+2. **Stripe** (Dashboard → Developers)
+   - API keys → secret key → `STRIPE_SECRET_KEY`. Start with the **test mode** key (`sk_test_…`) and Stripe's test card `4242 4242 4242 4242`.
+   - Webhooks → add endpoint `https://<domain>/api/stripe-webhook` for `checkout.session.completed` and `checkout.session.async_payment_succeeded`; copy its signing secret → `STRIPE_WEBHOOK_SECRET`. Test mode and live mode each have their own webhook and secret.
 3. **Resend**: verify the sending domain, set `RESEND_API_KEY` and `EMAIL_FROM`.
 4. **Shipping**: no integration. She buys labels wherever she likes (Pirate Ship, USPS.com, the post office), then taps **Mark shipped** on the order and enters the carrier and tracking number. The customer gets a tracking email.
 5. **Push**: `npx web-push generate-vapid-keys` → `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT=mailto:...`.
@@ -43,9 +43,9 @@ npx vercel dev               # runs the Vite app AND /api functions
 
 ## How it fits together
 - **Security:** the browser only has the anon key, and RLS gives anonymous users no table access. Customer pages read orders through `/api/get-order`, which strips admin-only fields (`po_number`, `internal_notes`, label URL, internal cost breakdown). Admin pages query Supabase directly; RLS allows it only for users in `admin_users`. Admin API routes verify the Supabase session token.
-- **Money is computed server-side.** Shop totals, bulk discounts, discount codes and deposit/balance amounts are recalculated from the database before a Square link is created.
-- **One function for all routes.** `api/[action].js` dispatches to `api/_handlers/*.js`, so the whole API counts as 2 functions on Vercel's Hobby plan (limit 12). `api/square-webhook.js` is separate because it needs the raw request body.
-- **Payments:** each Square checkout is recorded in `payments`; the webhook matches it by Square order ID, updates `amount_paid`, and moves the order to `confirmed`. Cash/Zelle/etc. can be recorded manually on the order page.
+- **Money is computed server-side.** Shop totals, bulk discounts, discount codes and deposit/balance amounts are recalculated from the database before a Stripe Checkout is created.
+- **One function for all routes.** `api/[action].js` dispatches to `api/_handlers/*.js`, so the whole API counts as 3 functions on Vercel's Hobby plan (limit 12). `api/stripe-webhook.js` and `api/resend-webhook.js` are separate because they need the raw request body.
+- **Payments:** each Stripe Checkout Session is recorded in `payments`; the webhook matches it by session ID, updates `amount_paid`, and moves the order to `confirmed`. Cash/Zelle/etc. can be recorded manually on the order page.
 
 ## Sticker Bar bookings
 The custom order form includes **Sticker Bar (event booking)**. Choosing it swaps the product fields for event fields: date, start time, length, guest count, event type, venue and address. These are saved in `orders.event_details`, the guest count goes in `quantity`, and the event date goes in `need_by`. Booking requests get their own email subject and push notification, and they skip pickup/shipping. Link straight to the booking form with `/?type=sticker-bar`.
@@ -54,7 +54,7 @@ The custom order form includes **Sticker Bar (event booking)**. Choosing it swap
 - In **Shop → + Digital**, add a name, price and preview images, then upload the file buyers will receive (PDF, ZIP, PNG, SVG, cut files, Procreate, fonts, etc., up to 50 MB; zip multiple files together).
 - Files live in the **private** `digital-products` storage bucket. The browser never sees the storage path.
 - Physical and digital items can share one cart. Download-only carts skip delivery and shipping. Digital items are one copy per order and don't count toward bulk discounts unless she ticks that box.
-- When Square confirms full payment, the webhook emails the buyer a link to `/downloads/:orderId`, and download-only orders are marked **Complete**. Each visit to that page creates fresh links that expire after 24 hours, so the emailed link keeps working while shared file links don't.
+- When Stripe confirms full payment, the webhook emails the buyer a link to `/downloads/:orderId`, and download-only orders are marked **Complete**. Each visit to that page creates fresh links that expire after 24 hours, so the emailed link keeps working while shared file links don't.
 - If someone pays another way, record the payment on the order, then tap **Email download link**.
 
 ## In-app email

@@ -1,6 +1,6 @@
 import { db, requireMethod, HttpError, isEmail, firstName, APP_URL, BRAND } from '../_lib/core.js'
 import { priceCart } from '../_lib/pricing.js'
-import { createPaymentLink } from '../_lib/square.js'
+import { createCheckoutSession } from '../_lib/stripe.js'
 import { notifyAdmins } from '../_lib/push.js'
 import { storageUrlsOnly, cleanAddress } from '../_lib/validate.js'
 import { fmt } from '../../src/lib/money.js'
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     shipping_address: shippingAddress,
     status: 'payment_pending',
     source: 'shop',
-    payment_methods: ['square'],
+    payment_methods: ['card'],
     shop_cart: cart.lines,
     shop_discount_code: cart.discount?.code || null,
     shop_discount_amount: cart.codeDiscount || null,
@@ -65,13 +65,14 @@ export default async function handler(req, res) {
   }).select().single()
   if (error) throw new HttpError(500, error.message)
 
-  const url = await createPaymentLink({
+  const url = await createCheckoutSession({
     orderId: order.id,
     kind: 'full',
     amount: cart.total,
     name: `${BRAND.name} — ${productType}`,
     buyerEmail: customerEmail,
-    redirectUrl: `${APP_URL}/quote/${order.id}?paid=1`,
+    successUrl: `${APP_URL}/quote/${order.id}?paid=1`,
+    cancelUrl: `${APP_URL}/shop/products`,
   })
   await supabase.from('orders').update({ stripe_payment_url: url }).eq('id', order.id)
 

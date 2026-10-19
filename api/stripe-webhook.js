@@ -1,8 +1,8 @@
-// Square webhook → marks payments paid and moves the order forward.
-// Subscribe to `payment.created` and `payment.updated` in the Square Developer Dashboard,
-// pointing at https://<your-domain>/api/square-webhook.
+// Stripe webhook → marks payments paid and moves the order forward.
+// Stripe Dashboard → Developers → Webhooks → add https://<your-domain>/api/stripe-webhook
+// for `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 import { db, APP_URL, firstName } from './_lib/core.js'
-import { verifySquareSignature } from './_lib/square.js'
+import { verifyStripeEvent } from './_lib/stripe.js'
 import { notifyAdmins } from './_lib/push.js'
 import { layout, rows, panel, button, emailMaker, sendEmail, esc } from './_lib/email.js'
 import { digitalLines, hasPhysicalLines, sendDownloadEmail } from './_lib/downloads.js'
@@ -22,42 +22,40 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
   const body = await rawBody(req)
-  const notificationUrl = process.env.SQUARE_WEBHOOK_URL || `${APP_URL}/api/square-webhook`
+  let event
   try {
-    if (!verifySquareSignature(body, req.headers['x-square-hmacsha256-signature'], notificationUrl)) {
-      return res.status(401).json({ error: 'Invalid signature' })
-    }
+    event = verifyStripeEvent(body, req.headers['stripe-signature'])
   } catch (e) {
-    console.error('square-webhook:', e.message)
+    console.error('stripe-webhook:', e.message)
     return res.status(500).json({ error: 'Webhook not configured' })
   }
+  if (!event) return res.status(400).json({ error: 'Invalid signature' })
 
-  let event
-  try { event = JSON.parse(body) } catch { return res.status(400).json({ error: 'Invalid JSON' }) }
-
-  const payment = event?.data?.object?.payment
-  if (!['payment.created', 'payment.updated'].includes(event?.type) || payment?.status !== 'COMPLETED' || !payment.order_id) {
-    return res.status(200).json({ ok: true, ignored: true })
+  const session = event.data?.object
+  const paidEvent = event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded'
+  // Delayed methods (e.g. bank debits) complete with payment_status 'unpaid' and succeed later.
+  if (!paidEvent || session?.object !== 'checkout.session' || session.payment_status !== 'paid') {
+    return res.status(200).json({ received: true, ignored: true })
   }
 
   try {
-    await handleCompleted(payment)
+    await handleCompleted(session)
   } catch (e) {
-    console.error('square-webhook handler error:', e)
-    return res.status(500).json({ error: 'Handler failed' }) // Square retries on non-2xx
+    console.error('stripe-webhook handler error:', e)
+    return res.status(500).json({ error: 'Handler failed' }) // Stripe retries on non-2xx
   }
-  return res.status(200).json({ ok: true })
+  return res.status(200).json({ received: true })
 }
 
-async function handleCompleted(payment) {
+async function handleCompleted(session) {
   const supabase = db()
 
   // Claim the pending payment row atomically so duplicate webhooks don't double-count.
   const now = new Date().toISOString()
   const { data: claimed } = await supabase
     .from('payments')
-    .update({ status: 'paid', paid_at: now, square_payment_id: payment.id })
-    .eq('square_order_id', payment.order_id)
+    .update({ status: 'paid', paid_at: now, stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id || null })
+    .eq('stripe_session_id', session.id)
     .eq('status', 'pending')
     .select()
   const row = claimed?.[0]
@@ -66,7 +64,7 @@ async function handleCompleted(payment) {
   const { data: order } = await supabase.from('orders').select('*').eq('id', row.order_id).single()
   if (!order) return
 
-  const amount = payment.amount_money?.amount != null ? round2(payment.amount_money.amount / 100) : round2(row.amount)
+  const amount = session.amount_total != null ? round2(session.amount_total / 100) : round2(row.amount)
   const amountPaid = round2((Number(order.amount_paid) || 0) + amount)
   const fullyPaid = amountPaid >= round2(order.price) - 0.009
 
@@ -108,7 +106,6 @@ async function handleCompleted(payment) {
             ['Order total', fmt(order.price)],
             ['Remaining', remaining ? fmt(remaining) : 'Paid in full 🎉'],
           ]))}
-          ${payment.receipt_url ? button('View Square receipt', payment.receipt_url) : ''}
           ${button('View your order', `${APP_URL}/quote/${order.id}`)}`,
       }),
     }).catch(e => console.error('receipt email failed', e)),

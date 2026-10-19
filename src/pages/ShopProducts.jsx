@@ -333,7 +333,7 @@ function CartModal({ lines, settings, shopOpen, onClose, setQty, onCheckedOut })
           {files.length > 0 && <div style={ui.hint}>{files.map(x => `${x.name}${x.url ? ' ✓' : '…'}`).join(' · ')}</div>}
           {totals}
           {error && <div style={ui.error}>{error}</div>}
-          <Button type="submit" block loading={busy} disabled={uploading}>Pay {fmt(total)} with Square →</Button>
+          <Button type="submit" block loading={busy} disabled={uploading}>Pay {fmt(total)} securely →</Button>
           <Button type="button" variant="ghost" block onClick={() => setStep('cart')}>← Back to cart</Button>
         </form>
       )}
