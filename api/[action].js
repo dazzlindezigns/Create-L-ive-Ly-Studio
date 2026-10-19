@@ -18,6 +18,7 @@ const routes = {
   'create-shop-order':   () => import('./_handlers/create-shop-order.js'),
   'push-config':         () => import('./_handlers/push-config.js'),
   'get-downloads':       () => import('./_handlers/get-downloads.js'),
+  'health':              () => import('./_handlers/health.js'),
   // Admin (require a signed-in admin)
   'send-quote':          () => import('./_handlers/send-quote.js'),
   'send-proof':          () => import('./_handlers/send-proof.js'),
