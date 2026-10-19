@@ -8,7 +8,7 @@ import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash, B
 
 const BLANK = { kind: 'physical', collection: '', name: '', description: '', price: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
 const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', bulk_pricing_enabled: false }
-const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/schema.sql
+const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
 export default function AdminProducts() {
   const [products, setProducts] = useState(null)

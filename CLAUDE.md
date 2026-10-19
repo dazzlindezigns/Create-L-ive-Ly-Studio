@@ -12,6 +12,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 - Square Payment Links (JSON API, Bearer `SQUARE_SECRET_KEY`), Resend, web-push, Anthropic SDK (`claude-opus-4-8` via `api/_lib/anthropic.js`, structured outputs via zod), Gemini image API (REST, `GEMINI_API_KEY`). No shipping-label integration — tracking is entered manually.
 
 ## Rules
+- **Database changes go in a NEW file** `supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql`. Never edit a migration that already shipped; the Supabase GitHub integration won't re-run it. Test it on a scratch Postgres before pushing, because a failing migration blocks the deploy.
 - **Brand values come from `src/brand.js`** — never hardcode the business name or hex colors. It's imported by both the app and `/api`, so keep it browser-API-free.
 - **`po_number` and `internal_notes` are admin-only.** Never return them to customers. `publicOrder()` in `api/_lib/core.js` strips them; customer pages must use `/api/get-order`, never query `orders` directly.
 - **Never trust client amounts.** Use `paymentOptions()` (`src/lib/money.js`) and `priceCart()` (`api/_lib/pricing.js`) server-side.
@@ -27,7 +28,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 ## Key files
 | Path | Purpose |
 |------|---------|
-| `supabase/schema.sql` | Tables, RLS (`is_admin()`), storage buckets |
+| `supabase/migrations/*.sql` | Tables, RLS (`is_admin()`), storage buckets — applied by the Supabase GitHub integration on push to `main` |
 | `api/[action].js` | Router for all `/api/*` endpoints |
 | `api/square-webhook.js` | Marks payments paid (signature-verified) |
 | `api/_lib/*` | db/auth, email layout, push, Square, Claude client, tracking links, pricing, validation |

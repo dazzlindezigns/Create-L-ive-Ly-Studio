@@ -1,6 +1,8 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- Create(L)ive(Ly) Studio — order management schema
--- Run once in Supabase → SQL Editor. Safe to re-run (IF NOT EXISTS everywhere).
+-- Create(L)ive(Ly) Studio — initial schema
+-- Applied automatically by the Supabase GitHub integration when this lands on main.
+-- Don't edit after it has run — add a new file in supabase/migrations/ for changes.
+-- (Safe to re-run by hand in the SQL Editor: IF NOT EXISTS everywhere.)
 --
 -- Security model:
 --   • The browser uses the ANON key. Anonymous visitors can read NOTHING directly.
