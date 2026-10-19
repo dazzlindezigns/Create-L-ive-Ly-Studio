@@ -4,7 +4,6 @@ import { BRAND, COLLECTIONS } from '../brand'
 
 const LINKS = [
   { to: '/shop/products', label: 'Shop' },
-  { to: '/#collections', label: 'Collections' },
   { to: '/#sticker-bar', label: 'Sticker Bar' },
   { to: '/#about', label: 'About' },
 ]
