@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import RequireAdmin from './components/RequireAdmin'
+import { missingEnv } from './lib/supabase'
+import SetupNeeded from './pages/SetupNeeded'
 import OrderForm from './pages/OrderForm'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -14,6 +16,7 @@ import Downloads from './pages/Downloads'
 const admin = (el) => <RequireAdmin>{el}</RequireAdmin>
 
 export default function App() {
+  if (missingEnv.length) return <SetupNeeded missing={missingEnv} />
   return (
     <BrowserRouter>
       <Routes>
