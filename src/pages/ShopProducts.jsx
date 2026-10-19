@@ -16,12 +16,12 @@ export default function ShopProducts() {
   const [settings, setSettings] = useState({})
   const [cart, setCart] = useState(loadCart) // [{ key, productId, option, quantity, format }]
   const [cartOpen, setCartOpen] = useState(false)
-  const [error, setError] = useState('')
-
   useEffect(() => {
-    Promise.all([api('get-products'), api('get-settings').catch(() => ({}))])
-      .then(([p, s]) => { setProducts(p); setSettings(s) })
-      .catch(e => setError(e.message))
+    // If products can't load, customers still get the designed shop with "coming soon" collections.
+    Promise.all([
+      api('get-products').catch(e => { console.error('get-products:', e.message); return [] }),
+      api('get-settings').catch(() => ({})),
+    ]).then(([p, s]) => { setProducts(p); setSettings(s) })
   }, [])
 
   useEffect(() => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)) } catch {} }, [cart])
@@ -49,7 +49,7 @@ export default function ShopProducts() {
   const all = products || []
   const filters = [
     { key: 'all', label: 'All products' },
-    ...COLLECTIONS.filter(c => all.some(p => p.collection === c.key)).map(c => ({ key: c.key, label: c.name, blurb: c.blurb })),
+    ...COLLECTIONS.map(c => ({ key: c.key, label: c.name, blurb: c.blurb })),
     ...(all.some(p => offersDigital(p)) ? [{ key: 'digital', label: '⬇️ Digital downloads' }] : []),
   ]
   const active = filters.find(f => f.key === filter) || filters[0]
@@ -67,7 +67,6 @@ export default function ShopProducts() {
     setCartOpen(true)
   }
 
-  if (error) return <div style={ui.wrap}><div style={ui.error}>{error}</div></div>
   if (!products) return <Loading />
 
   return (
@@ -102,17 +101,17 @@ export default function ShopProducts() {
           <div style={{ ...ui.hint, textAlign: 'center', marginTop: -8, marginBottom: 16 }}>📦 Free shipping on orders over {fmt(settings.shop_free_shipping_over)}</div>
         )}
 
-        {products.length === 0 ? (
-          <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)' }}>No products yet — check back soon!</div>
+        <div style={styles.filters}>
+          {filters.map(f => (
+            <button key={f.key} onClick={() => setParam('c', f.key === 'all' ? null : f.key)} style={{ ...styles.filter, ...(active.key === f.key ? styles.filterOn : {}) }}>{f.label}</button>
+          ))}
+        </div>
+        {shown.length === 0 ? (
+          active.key === 'all' || active.key === 'digital'
+            ? <ComingSoonCollections onPick={key => setParam('c', key)} />
+            : <ComingSoon collection={COLLECTIONS.find(c => c.key === active.key)} onBrowse={() => setParam('c', null)} />
         ) : (
           <>
-          {filters.length > 1 && (
-            <div style={styles.filters}>
-              {filters.map(f => (
-                <button key={f.key} onClick={() => setParam('c', f.key === 'all' ? null : f.key)} style={{ ...styles.filter, ...(active.key === f.key ? styles.filterOn : {}) }}>{f.label}</button>
-              ))}
-            </div>
-          )}
           <div style={styles.grid}>
             {shown.map(p => {
               const both = offersPhysical(p) && offersDigital(p)
@@ -155,6 +154,53 @@ export default function ShopProducts() {
       {cartOpen && <CartModal lines={lines} settings={settings} stackTiers={stackTiers} shopOpen={shopOpen} onClose={() => setCartOpen(false)}
         setQty={(key, q) => setCart(prev => q <= 0 ? prev.filter(c => c.key !== key) : prev.map(c => c.key === key ? { ...c, quantity: q } : c))}
         onCheckedOut={() => setCart([])} />}
+    </div>
+  )
+}
+
+// Shown while a collection has no products yet (or the shop couldn't load them).
+function ComingSoonCollections({ onPick }) {
+  return (
+    <>
+      <p style={{ ...ui.muted, textAlign: 'center', marginBottom: 18 }}>New pieces are on the way — here’s what’s coming to the shop.</p>
+      <div className="grid-2">
+        {COLLECTIONS.map(c => (
+          <button key={c.key} onClick={() => onPick(c.key)} style={{ ...styles.tile, textAlign: 'left' }}>
+            <div style={{ aspectRatio: '2 / 1', overflow: 'hidden', background: 'var(--card2)', position: 'relative' }}>
+              <img src={c.image} alt={`${BRAND.name} ${c.name}`} loading="lazy" style={styles.img} />
+              <span style={styles.digitalTag}>Coming soon</span>
+            </div>
+            <div style={{ padding: '14px 16px 18px' }}>
+              <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 22, fontWeight: 600 }}>{c.name}</div>
+              <div style={{ ...ui.muted, marginTop: 4, lineHeight: 1.6 }}>{c.blurb}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function ComingSoon({ collection, onBrowse }) {
+  if (!collection) return null
+  const sticker = collection.key === STICKER_BAR.collection
+  return (
+    <div style={{ ...ui.card, padding: 0, overflow: 'hidden' }}>
+      {sticker ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(30%, 150px), 1fr))', gap: 10, padding: 14, background: 'var(--card2)' }}>
+          {STICKER_BAR.showcase.map(src => <img key={src} src={src} alt="Sticker Bar sticker sheet" loading="lazy" style={{ width: '100%', aspectRatio: '2 / 3', objectFit: 'cover', borderRadius: 12, display: 'block' }} />)}
+        </div>
+      ) : (
+        <img src={collection.image} alt={`${BRAND.name} ${collection.name}`} style={{ width: '100%', aspectRatio: '2 / 1', maxHeight: 420, objectFit: 'cover', display: 'block' }} />
+      )}
+      <div style={{ padding: '22px 22px 26px', textAlign: 'center' }}>
+        <div style={{ ...ui.eyebrow, marginBottom: 6 }}>{sticker ? 'First drop coming soon' : 'Coming soon'}</div>
+        <p style={{ color: 'var(--mid)', lineHeight: 1.8, maxWidth: 620, margin: '0 auto' }}>{collection.description}</p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
+          <Link to="/custom" style={styles.ctaPink}>Request a custom item</Link>
+          <button onClick={onBrowse} style={styles.ctaGhost}>Browse all collections</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -455,6 +501,8 @@ const styles = {
   filter: { padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   filterOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
   digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--primary)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
+  ctaPink: { display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, var(--accent), var(--primary))', color: '#fff', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', textDecoration: 'none' },
+  ctaGhost: { font: 'inherit', display: 'inline-flex', alignItems: 'center', background: '#fff', color: 'var(--dark)', border: '1px solid var(--border)', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer' },
   series: { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 2 },
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   formatBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '12px 8px', borderRadius: 14, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', font: 'inherit', color: 'var(--dark)' },

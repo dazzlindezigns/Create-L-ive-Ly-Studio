@@ -5,15 +5,17 @@ export default async function handler(req, res) {
   const supabase = db()
   let query = supabase
     .from('products')
-    .select('id, name, description, price, digital_price, kind, collection, series, badge, stock, digital_file_name, image_urls, options, bulk_pricing_enabled, sort_order')
+    .select('*')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
   if (req.query.id) query = query.eq('id', req.query.id)
-  // digital_file_path is deliberately not selected — the private file location never reaches the browser.
 
   const { data, error } = await query
   if (error) throw new HttpError(500, error.message)
   res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=300')
-  return res.status(200).json(data || [])
+  // select('*') keeps the shop working whether or not the latest migration has run.
+  // Strip the private download location (and anything admin-only) before it reaches the browser.
+  // eslint-disable-next-line no-unused-vars
+  return res.status(200).json((data || []).map(({ digital_file_path, active, created_at, ...p }) => p))
 }
