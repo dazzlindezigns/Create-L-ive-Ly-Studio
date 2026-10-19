@@ -134,11 +134,10 @@ export default function OrderDetail() {
               <Row k="Carrier" v={order.shipping_carrier} />
               <Row k="Tracking" v={order.tracking_number} />
               <Row k="Shipped" v={order.shipped_at && new Date(order.shipped_at).toLocaleDateString()} />
-              {order.shipping_label_url && <Row k="Label" v={<a href={order.shipping_label_url} target="_blank" rel="noreferrer">Reprint label ↗</a>} />}
             </dl>
           ) : <p style={ui.muted}>{order.fulfillment === 'shipping' ? 'Not shipped yet.' : `Customer picks up — ${BRAND.pickupLabel}.`}</p>}
           <div style={{ ...ui.row, marginTop: 12 }}>
-            <Button variant="secondary" small onClick={() => setShipOpen(true)}>{order.tracking_number ? 'Update shipping' : 'Ship / buy label'}</Button>
+            <Button variant="secondary" small onClick={() => setShipOpen(true)}>{order.tracking_number ? 'Update tracking' : 'Mark shipped'}</Button>
             {order.fulfillment !== 'shipping' && order.status !== 'ready_for_pickup' && (
               <Button variant="ghost" small onClick={() => update({ status: 'ready_for_pickup' }, 'Marked ready for pickup')}>Mark ready for pickup</Button>
             )}

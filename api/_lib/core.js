@@ -52,7 +52,7 @@ export async function getOrder(id) {
 }
 
 // Fields customers must never see. po_number is admin-only by design.
-const ADMIN_ONLY = ['po_number', 'internal_notes', 'shipping_label_url']
+const ADMIN_ONLY = ['po_number', 'internal_notes']
 
 export function publicOrder(order) {
   const out = { ...order }

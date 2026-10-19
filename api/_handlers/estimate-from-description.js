@@ -1,9 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { requireMethod, requireAdmin, HttpError, BRAND } from '../_lib/core.js'
-
-const MODEL = 'claude-opus-4-8'
+import { parseWithClaude } from '../_lib/anthropic.js'
 
 const QuoteSchema = z.object({
   items: z.array(z.object({
@@ -64,38 +62,20 @@ export default async function handler(req, res) {
     .filter(i => i?.base64 && ALLOWED_MEDIA.has(i.mediaType))
     .slice(0, 4)
   if (!String(description).trim() && !imageList.length) throw new HttpError(400, 'Provide a description or image')
-  if (!process.env.ANTHROPIC_API_KEY) throw new HttpError(500, 'ANTHROPIC_API_KEY is not set')
-
   const isQuote = mode !== 'invoice'
-  const client = new Anthropic()
+  const output = await parseWithClaude({
+    output_config: {
+      effort: 'medium',
+      format: zodOutputFormat(isQuote ? QuoteSchema : InvoiceSchema),
+    },
+    messages: [{
+      role: 'user',
+      content: [
+        ...imageList.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } })),
+        { type: 'text', text: isQuote ? quotePrompt(description) : invoicePrompt(description) },
+      ],
+    }],
+  })
 
-  let response
-  try {
-    response = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 16000,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: 'medium',
-        format: zodOutputFormat(isQuote ? QuoteSchema : InvoiceSchema),
-      },
-      messages: [{
-        role: 'user',
-        content: [
-          ...imageList.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } })),
-          { type: 'text', text: isQuote ? quotePrompt(description) : invoicePrompt(description) },
-        ],
-      }],
-    })
-  } catch (e) {
-    if (e instanceof Anthropic.RateLimitError) throw new HttpError(429, 'AI estimator is busy — try again in a minute')
-    if (e instanceof Anthropic.BadRequestError) throw new HttpError(400, `AI request rejected: ${e.message}`)
-    if (e instanceof Anthropic.APIError) throw new HttpError(502, `AI service error (${e.status})`)
-    throw e
-  }
-
-  if (response.stop_reason === 'refusal') throw new HttpError(422, 'The AI declined this request — try rewording the description')
-  if (response.stop_reason === 'max_tokens' || !response.parsed_output) throw new HttpError(502, 'The AI response was incomplete — try a shorter description')
-
-  return res.status(200).json(response.parsed_output)
+  return res.status(200).json(output)
 }

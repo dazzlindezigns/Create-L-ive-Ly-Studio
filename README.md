@@ -4,10 +4,10 @@ Custom orders, shop and studio management for Create(L)ive(Ly) Studio — 3D pri
 
 **Customer side:** custom order form (`/`), quote review with e-sign + Square payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
 
-**Admin side** (login required): dashboard with status pipeline, live updates, shop open/closed toggle and push notifications (`/dashboard`), full order management with proofs, payments, EasyPost labels and admin-only PO numbers (`/dashboard/order/:id`), AI price calculator + invoices (`/dashboard/calculator`), products, discount codes and shop settings (`/dashboard/products`).
+**Admin side** (login required): dashboard with status pipeline, live updates, shop open/closed toggle and push notifications (`/dashboard`), full order management with proofs, payments, shipping/tracking emails and admin-only PO numbers (`/dashboard/order/:id`), AI price calculator + invoices (`/dashboard/calculator`), products with a Claude listing writer and Gemini photo generator, discount codes and shop settings (`/dashboard/products`).
 
 ## Stack
-React 18 + Vite · React Router v6 · inline style objects + CSS variables · Supabase · Vercel serverless functions · Square Payment Links · Resend · EasyPost · web-push · Anthropic API (`claude-opus-4-8`)
+React 18 + Vite · React Router v6 · inline style objects + CSS variables · Supabase · Vercel serverless functions · Square Payment Links · Resend · web-push · Anthropic API (`claude-opus-4-8`) · Google Gemini image API
 
 ## Branding
 Everything brand-related lives in **`src/brand.js`**: name, colors and fonts (taken from her Payhip theme), collections, custom-order product types, bulk tiers and quote terms. Still to fill in there: `ownerFirstName`, `location`, `pickupLabel` and `timezone`. Static brand files: `public/manifest.json`, `public/logo.png` (her transparent logo) and the icons/OG image generated from it.
@@ -25,10 +25,11 @@ Everything brand-related lives in **`src/brand.js`**: name, colors and fonts (ta
    - Copy the access token → `SQUARE_SECRET_KEY`, the location ID → `SQUARE_LOCATION_ID`. Start with `SQUARE_ENVIRONMENT=sandbox`.
    - Webhooks → add `https://<domain>/api/square-webhook` for `payment.created` and `payment.updated`; copy the signature key → `SQUARE_WEBHOOK_SIGNATURE_KEY`.
 3. **Resend**: verify the sending domain, set `RESEND_API_KEY` and `EMAIL_FROM`.
-4. **EasyPost**: `EASYPOST_API_KEY` + the `MAKER_*` return address.
+4. **Shipping**: no integration. She buys labels wherever she likes (Pirate Ship, USPS.com, the post office), then taps **Mark shipped** on the order and enters the carrier and tracking number. The customer gets a tracking email.
 5. **Push**: `npx web-push generate-vapid-keys` → `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT=mailto:...`.
-6. **Anthropic**: `ANTHROPIC_API_KEY` for the calculator's AI estimate.
-7. Add every variable from `.env.example` to Vercel → Settings → Environment Variables, then deploy.
+6. **Anthropic**: `ANTHROPIC_API_KEY` for the calculator's AI estimate and the listing writer.
+7. **Gemini**: `GEMINI_API_KEY` from Google AI Studio (turn on billing; image generation isn't on the free tier) for listing photos.
+8. Add every variable from `.env.example` to Vercel → Settings → Environment Variables, then deploy.
 
 On iPhone, push notifications only work after "Add to Home Screen" (iOS 16.4+).
 
@@ -55,6 +56,10 @@ The custom order form includes **Sticker Bar (event booking)**. Choosing it swap
 - Physical and digital items can share one cart. Download-only carts skip delivery and shipping. Digital items are one copy per order and don't count toward bulk discounts unless she ticks that box.
 - When Square confirms full payment, the webhook emails the buyer a link to `/downloads/:orderId`, and download-only orders are marked **Complete**. Each visit to that page creates fresh links that expire after 24 hours, so the emailed link keeps working while shared file links don't.
 - If someone pays another way, record the payment on the order, then tap **Email download link**.
+
+## AI listing helpers (Shop → product editor)
+- **✨ Write with Claude:** she jots a few notes ("3D printed name keychain, PLA silk, 5 colors"). Claude reads the notes plus the product photos and fills in the title, description and options in the studio's voice, suggests a price, and lists anything a buyer would still need (like exact size). It's told never to invent specs. Everything stays editable before she saves. Code: `api/_handlers/write-listing.js`.
+- **🎨 Create listing photos with Gemini:** pick one of her real photos and a style (clean studio, lifestyle, flat lay, gift-ready, vendor table, print mockup). Gemini keeps the product as-is and restyles the scene. Each tap makes 2 options; she adds the ones she likes. Without a photo it can generate from the description, but that won't show the exact item, so the app warns her. Code: `api/_handlers/generate-listing-image.js`.
 
 ## Order statuses
 `pending → quote_sent → confirmed → proof_sent ⇄ revisions_requested → proof_approved → in_production → ready_for_pickup | shipped → completed` (plus `invoice_sent`, `payment_pending` for shop checkouts, `declined`, `cancelled`).

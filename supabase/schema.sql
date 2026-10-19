@@ -95,7 +95,6 @@ create table if not exists orders (
   -- Shipping
   tracking_number       text,
   shipping_carrier      text,
-  shipping_label_url    text,
   shipped_at            timestamptz,
 
   -- Admin-only — NEVER returned to customers (api/get-order.js strips these)

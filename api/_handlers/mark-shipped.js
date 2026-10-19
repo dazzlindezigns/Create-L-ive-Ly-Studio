@@ -1,6 +1,6 @@
 import { db, requireMethod, requireAdmin, getOrder, HttpError, firstName } from '../_lib/core.js'
 import { layout, rows, panel, button, sendEmail, esc } from '../_lib/email.js'
-import { trackingUrl } from '../_lib/easypost.js'
+import { trackingUrl } from '../_lib/shipping.js'
 
 export default async function handler(req, res) {
   requireMethod(req, 'POST')

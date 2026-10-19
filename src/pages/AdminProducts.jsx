@@ -171,6 +171,23 @@ function ProductModal({ product, onClose, onSaved, flash }) {
               style={{ ...styles.toggleBtn, ...(p.kind === k ? styles.toggleOn : {}) }}>{label}</button>
           ))}
         </div>
+        <div>
+          <div style={ui.label}>{isDigital ? 'Preview images' : 'Photos'}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(p.image_urls || []).map(u => (
+              <div key={u} style={{ position: 'relative' }}>
+                <img src={u} alt="" style={styles.thumb} />
+                <button onClick={() => setP(prev => ({ ...prev, image_urls: prev.image_urls.filter(x => x !== u) }))} style={styles.x}>×</button>
+              </div>
+            ))}
+            <label style={{ ...styles.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: '2px dashed var(--border)', fontSize: 22, color: 'var(--muted)' }}>
+              <input type="file" accept="image/*" multiple onChange={onFiles} style={{ display: 'none' }} />
+              {uploading ? '…' : '+'}
+            </label>
+          </div>
+        </div>
+        <ImageStudio p={p} setP={setP} flash={flash} />
+        <ListingAssistant p={p} setP={setP} flash={flash} />
         <Field label="Name"><Input value={p.name} onChange={set('name')} /></Field>
         <Field label="Collection">
           <Select value={p.collection || ''} onChange={set('collection')}
@@ -200,27 +217,141 @@ function ProductModal({ product, onClose, onSaved, flash }) {
             <Input value={p.options} onChange={set('options')} />
           </Field>
         )}
-        <div>
-          <div style={ui.label}>{isDigital ? 'Preview images' : 'Photos'}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {(p.image_urls || []).map(u => (
-              <div key={u} style={{ position: 'relative' }}>
-                <img src={u} alt="" style={styles.thumb} />
-                <button onClick={() => setP(prev => ({ ...prev, image_urls: prev.image_urls.filter(x => x !== u) }))} style={styles.x}>×</button>
-              </div>
-            ))}
-            <label style={{ ...styles.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: '2px dashed var(--border)', fontSize: 22, color: 'var(--muted)' }}>
-              <input type="file" accept="image/*" multiple onChange={onFiles} style={{ display: 'none' }} />
-              {uploading ? '…' : '+'}
-            </label>
-          </div>
-        </div>
         <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> Counts toward bulk discounts</label>
         <label style={styles.check}><input type="checkbox" checked={p.active} onChange={set('active')} /> Visible in shop</label>
         <Button block loading={busy} disabled={uploading || fileUploading} onClick={save}>Save product</Button>
         {p.id && <Button block variant="danger" onClick={remove}>Delete product</Button>}
       </div>
     </Modal>
+  )
+}
+
+// ── Claude: draft the listing copy from photos + quick notes ────────────────
+function ListingAssistant({ p, setP, flash }) {
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const write = async () => {
+    setBusy(true)
+    try {
+      const r = await api('write-listing', {
+        auth: true,
+        body: { name: p.name, notes, collection: p.collection, kind: p.kind, price: p.price, imageUrls: p.image_urls || [] },
+      })
+      setP(prev => ({
+        ...prev,
+        name: r.title || prev.name,
+        description: r.description || prev.description,
+        ...(prev.kind !== 'digital' && r.options?.length ? { options: r.options.join(', ') } : {}),
+      }))
+      setResult(r)
+      flash('Listing drafted — review and edit before saving ✨')
+    } catch (e) { flash(e.message, 'error') } finally { setBusy(false) }
+  }
+
+  return (
+    <div style={styles.aiBox}>
+      <div style={{ ...ui.eyebrow, marginBottom: 6 }}>✨ Write the listing with Claude</div>
+      <TextArea rows={3} value={notes} onChange={e => setNotes(e.target.value)}
+        placeholder={p.kind === 'digital'
+          ? 'What is it? e.g. "12 blush floral digital papers, 12x12 JPG at 300dpi, commercial use OK, great for scrapbooking & sublimation"'
+          : 'What is it? e.g. "3D printed name keychain, PLA silk, any name up to 10 letters, 5 colors, about 3 inches wide"'} />
+      <div style={{ ...ui.hint, margin: '6px 0 10px' }}>Claude reads your notes and photos, writes the title, description and options in the studio’s voice, and suggests a price. It only states facts you give it.</div>
+      <Button small variant="gradient" loading={busy} onClick={write}>{busy ? 'Writing…' : p.description ? 'Rewrite with Claude' : 'Write with Claude'}</Button>
+      {result && (
+        <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.6 }}>
+          {result.suggestedPrice != null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>Suggested price: <strong>{fmt(result.suggestedPrice)}</strong></span>
+              <Button small variant="ghost" onClick={() => setP(prev => ({ ...prev, price: result.suggestedPrice }))}>Use it</Button>
+            </div>
+          )}
+          {result.priceNote && <div style={ui.muted}>{result.priceNote}</div>}
+          {result.missingInfo?.length > 0 && (
+            <div style={{ marginTop: 8, color: 'var(--warning)' }}>
+              <strong>Add to the description if you can:</strong> {result.missingInfo.join(' · ')}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Gemini: restage her real product photo as listing images ────────────────
+const IMAGE_STYLES = [
+  ['studio', 'Clean studio'], ['lifestyle', 'Lifestyle'], ['flatlay', 'Flat lay'],
+  ['gift', 'Gift-ready'], ['vendor', 'Vendor table'], ['mockup', 'Print mockup'],
+]
+
+function ImageStudio({ p, setP, flash }) {
+  const photos = p.image_urls || []
+  const [source, setSource] = useState(null)
+  const [style, setStyle] = useState(p.kind === 'digital' ? 'mockup' : 'studio')
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState([])
+  const src = source && photos.includes(source) ? source : photos[0] || null
+
+  const generate = async () => {
+    setBusy(true)
+    // Two variations per click; each call returns one saved image.
+    const calls = [0, 1].map(() => api('generate-listing-image', {
+      auth: true,
+      body: { sourceImageUrl: src, style, productName: p.name, notes: p.description?.slice(0, 300) },
+    }))
+    const settled = await Promise.allSettled(calls)
+    const urls = settled.filter(r => r.status === 'fulfilled').map(r => r.value.url)
+    const failed = settled.find(r => r.status === 'rejected')
+    setResults(prev => [...urls, ...prev])
+    if (!urls.length && failed) flash(failed.reason.message, 'error')
+    setBusy(false)
+  }
+
+  const add = (url) => {
+    setP(prev => ({ ...prev, image_urls: [...(prev.image_urls || []), url] }))
+    setResults(prev => prev.filter(u => u !== url))
+  }
+
+  return (
+    <div style={styles.aiBox}>
+      <div style={{ ...ui.eyebrow, marginBottom: 6 }}>🎨 Create listing photos with Gemini</div>
+      {photos.length > 0 ? (
+        <>
+          <div style={ui.hint}>Start from your photo — Gemini keeps the product as-is and restyles the scene. Tap the photo to use:</div>
+          <div style={{ display: 'flex', gap: 6, margin: '8px 0', flexWrap: 'wrap' }}>
+            {photos.map(u => (
+              <img key={u} src={u} alt="" onClick={() => setSource(u)}
+                style={{ ...styles.thumbSm, outline: u === src ? '3px solid var(--primary)' : 'none' }} />
+            ))}
+          </div>
+        </>
+      ) : (
+        <div style={{ ...ui.hint, marginBottom: 8, color: 'var(--warning)' }}>
+          {p.kind === 'digital'
+            ? 'Upload a preview of the design first for the most accurate mockups (or fill in the name/description to generate from scratch).'
+            : 'Upload a real photo first — images made from scratch won’t look exactly like what customers receive.'}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {IMAGE_STYLES.map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setStyle(k)} style={{ ...styles.chip, ...(style === k ? styles.chipOn : {}) }}>{label}</button>
+        ))}
+      </div>
+      <Button small variant="gradient" loading={busy} disabled={!src && !p.name && !p.description} onClick={generate}>
+        {busy ? 'Creating… (~20 sec)' : 'Create 2 photos'}
+      </Button>
+      {results.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginTop: 12 }}>
+          {results.map(u => (
+            <div key={u} style={{ position: 'relative' }}>
+              <a href={u} target="_blank" rel="noreferrer"><img src={u} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 10, display: 'block' }} /></a>
+              <Button small onClick={() => add(u)} style={{ position: 'absolute', bottom: 6, left: 6, right: 6, padding: '6px 8px' }}>+ Add</Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -282,5 +413,9 @@ const styles = {
   toggleBtn: { flex: 1, padding: '10px 12px', borderRadius: 50, border: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   toggleOn: { background: '#fff', color: 'var(--dark)', boxShadow: '0 1px 6px rgba(0,0,0,0.08)' },
   fileDrop: { display: 'block', textAlign: 'center', padding: 18, borderRadius: 12, border: '2px dashed var(--border)', background: 'var(--card2)', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--secondary)', wordBreak: 'break-all' },
+  aiBox: { background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 14, padding: 14 },
+  thumbSm: { width: 52, height: 52, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' },
+  chip: { padding: '6px 11px', borderRadius: 50, border: '1.5px solid var(--border)', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
+  chipOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
   codeRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' },
 }
