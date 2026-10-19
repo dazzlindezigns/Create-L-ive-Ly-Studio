@@ -18,14 +18,18 @@ export default async function handler(req, res) {
   const customerEmail = String(b.customerEmail || '').trim().toLowerCase()
   if (!customerName || !isEmail(customerEmail)) throw new HttpError(400, 'Name and a valid email are required')
 
-  const fulfillment = b.fulfillment === 'shipping' ? 'shipping' : 'pickup'
+  // Price once to learn whether anything physical is in the cart, then again with shipping if needed.
+  let cart = await priceCart(b.items, b.discountCode, 0)
+  const hasPhysical = cart.lines.some(l => l.kind === 'physical')
+
+  const fulfillment = !hasPhysical ? 'digital' : b.fulfillment === 'shipping' ? 'shipping' : 'pickup'
   const shippingAddress = fulfillment === 'shipping' ? cleanAddress(b.shippingAddress, customerName) : null
   if (fulfillment === 'shipping' && !shippingAddress) throw new HttpError(400, 'Complete shipping address is required')
 
   const shippingFee = fulfillment === 'shipping' ? Number(settings.shop_shipping_fee) || 0 : 0
-  const cart = await priceCart(b.items, b.discountCode, shippingFee)
+  if (shippingFee) cart = await priceCart(b.items, b.discountCode, shippingFee)
 
-  const lines = cart.lines.map(l => `${l.productName}${l.option ? ` (${l.option})` : ''} × ${l.quantity} — ${fmt(l.itemTotal)}`)
+  const lines = cart.lines.map(l => `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' [digital download]' : ` × ${l.quantity}`} — ${fmt(l.itemTotal)}`)
   if (cart.tier) lines.push(`Bulk discount ${cart.tier.badge} (−${fmt(cart.bulkDiscount)})`)
   if (cart.discount) lines.push(`Code ${cart.discount.code} (−${fmt(cart.codeDiscount)})`)
   if (cart.shipping) lines.push(`Shipping ${fmt(cart.shipping)}`)

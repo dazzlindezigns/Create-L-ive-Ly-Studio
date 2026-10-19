@@ -5,7 +5,9 @@ import { fmt, round2 } from '../lib/money'
 import Nav from '../components/Nav'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash, Badge } from '../components/ui'
 
-const BLANK = { name: '', description: '', price: '', options: '', image_urls: [], bulk_pricing_enabled: true, active: true, sort_order: 0 }
+const BLANK = { kind: 'physical', name: '', description: '', price: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
+const BLANK_DIGITAL = { ...BLANK, kind: 'digital', bulk_pricing_enabled: false }
+const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/schema.sql
 
 export default function AdminProducts() {
   const [products, setProducts] = useState(null)
@@ -39,7 +41,10 @@ export default function AdminProducts() {
             <div style={ui.eyebrow}>Shop</div>
             <h1 style={ui.h1}>Products</h1>
           </div>
-          <Button small onClick={() => setEditing(BLANK)}>+ Product</Button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button small variant="ghost" onClick={() => setEditing(BLANK_DIGITAL)}>+ Digital</Button>
+            <Button small onClick={() => setEditing(BLANK)}>+ Physical</Button>
+          </div>
         </header>
 
         <div style={{ ...ui.card, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
@@ -54,8 +59,13 @@ export default function AdminProducts() {
               {p.image_urls?.[0] ? <img src={p.image_urls[0]} alt="" style={styles.thumb} /> : <div style={{ ...styles.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</div>}
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
-                <div style={ui.muted}>{fmt(p.price)}{p.options?.length ? ` · ${p.options.length} options` : ''}</div>
+                <div style={ui.muted}>
+                  {fmt(p.price)}
+                  {p.kind === 'digital' ? ` · ${p.digital_file_name || 'no file uploaded'}` : p.options?.length ? ` · ${p.options.length} options` : ''}
+                </div>
               </div>
+              {p.kind === 'digital' && <Badge color="var(--accent)" bg="var(--card2)">Digital</Badge>}
+              {p.kind === 'digital' && !p.digital_file_path && <Badge color="var(--danger)" bg="rgba(220,38,38,0.08)">Needs file</Badge>}
               {!p.active && <Badge color="#888" bg="rgba(0,0,0,0.06)">Hidden</Badge>}
             </button>
           ))}
@@ -94,6 +104,8 @@ function ProductModal({ product, onClose, onSaved, flash }) {
   const [p, setP] = useState(product)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [fileUploading, setFileUploading] = useState(false)
+  const isDigital = p.kind === 'digital'
   const set = (k) => (e) => setP(prev => ({ ...prev, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
   const onFiles = async (e) => {
@@ -108,12 +120,29 @@ function ProductModal({ product, onClose, onSaved, flash }) {
     } catch (err) { flash(err.message, 'error') } finally { setUploading(false) }
   }
 
+  // Digital files go to the PRIVATE digital-products bucket; we store only the path.
+  const onDigitalFile = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > MAX_DIGITAL_MB * 1024 * 1024) return flash(`File is over ${MAX_DIGITAL_MB} MB — zip it or compress it first`, 'error')
+    setFileUploading(true)
+    try {
+      const path = await uploadFile(file, 'digital-products', { auth: true })
+      setP(prev => ({ ...prev, digital_file_path: path, digital_file_name: file.name }))
+    } catch (err) { flash(err.message, 'error') } finally { setFileUploading(false) }
+  }
+
   const save = async () => {
     if (!p.name.trim() || !(Number(p.price) > 0)) return flash('Name and price are required', 'error')
+    if (isDigital && !p.digital_file_path && p.active) return flash('Upload the download file, or untick "Visible in shop" to save a draft', 'error')
     setBusy(true)
     const row = {
+      kind: isDigital ? 'digital' : 'physical',
+      digital_file_path: isDigital ? p.digital_file_path : null,
+      digital_file_name: isDigital ? p.digital_file_name : null,
       name: p.name.trim(), description: p.description?.trim() || null, price: round2(p.price),
-      options: String(p.options || '').split(',').map(s => s.trim()).filter(Boolean),
+      options: isDigital ? [] : String(p.options || '').split(',').map(s => s.trim()).filter(Boolean),
       image_urls: p.image_urls || [], bulk_pricing_enabled: p.bulk_pricing_enabled, active: p.active,
       sort_order: parseInt(p.sort_order, 10) || 0,
     }
@@ -131,19 +160,41 @@ function ProductModal({ product, onClose, onSaved, flash }) {
   }
 
   return (
-    <Modal title={p.id ? 'Edit product' : 'New product'} onClose={onClose}>
+    <Modal title={p.id ? 'Edit product' : isDigital ? 'New digital product' : 'New physical product'} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={styles.toggle}>
+          {[['physical', '📦 Physical'], ['digital', '⬇️ Digital download']].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setP(prev => ({ ...prev, kind: k }))}
+              style={{ ...styles.toggleBtn, ...(p.kind === k ? styles.toggleOn : {}) }}>{label}</button>
+          ))}
+        </div>
         <Field label="Name"><Input value={p.name} onChange={set('name')} /></Field>
         <div style={ui.row}>
           <Field label="Price ($)"><Input type="number" step="0.01" value={p.price} onChange={set('price')} /></Field>
           <Field label="Sort order"><Input type="number" value={p.sort_order} onChange={set('sort_order')} /></Field>
         </div>
         <Field label="Description"><TextArea rows={3} value={p.description || ''} onChange={set('description')} /></Field>
-        <Field label="Options (comma separated)" hint='e.g. Matte, Glossy, Holographic — leave blank for none'>
-          <Input value={p.options} onChange={set('options')} />
-        </Field>
+        {isDigital ? (
+          <div>
+            <div style={ui.label}>Download file</div>
+            <label style={{ ...styles.fileDrop, opacity: fileUploading ? 0.6 : 1 }}>
+              <input type="file" onChange={onDigitalFile} disabled={fileUploading} style={{ display: 'none' }} />
+              {fileUploading ? 'Uploading…'
+                : p.digital_file_name ? <><strong>{p.digital_file_name}</strong><span style={ui.muted}> · tap to replace</span></>
+                : '+ Upload the file buyers will download'}
+            </label>
+            <div style={ui.hint}>
+              PDF, ZIP, PNG, SVG, cut files (DXF, Studio3), Procreate, fonts… up to {MAX_DIGITAL_MB} MB. For multiple files, upload a ZIP.
+              Stored privately — buyers only get an expiring link after they pay.
+            </div>
+          </div>
+        ) : (
+          <Field label="Options (comma separated)" hint='e.g. Matte, Glossy, Holographic — leave blank for none'>
+            <Input value={p.options} onChange={set('options')} />
+          </Field>
+        )}
         <div>
-          <div style={ui.label}>Photos</div>
+          <div style={ui.label}>{isDigital ? 'Preview images' : 'Photos'}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {(p.image_urls || []).map(u => (
               <div key={u} style={{ position: 'relative' }}>
@@ -159,7 +210,7 @@ function ProductModal({ product, onClose, onSaved, flash }) {
         </div>
         <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> Counts toward bulk discounts</label>
         <label style={styles.check}><input type="checkbox" checked={p.active} onChange={set('active')} /> Visible in shop</label>
-        <Button block loading={busy} disabled={uploading} onClick={save}>Save product</Button>
+        <Button block loading={busy} disabled={uploading || fileUploading} onClick={save}>Save product</Button>
         {p.id && <Button block variant="danger" onClick={remove}>Delete product</Button>}
       </div>
     </Modal>
@@ -220,5 +271,9 @@ const styles = {
   thumb: { width: 64, height: 64, borderRadius: 10, objectFit: 'cover', background: 'var(--card2)', flexShrink: 0 },
   x: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'var(--dark)', color: '#fff', cursor: 'pointer' },
   check: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer' },
+  toggle: { display: 'flex', background: 'var(--card2)', borderRadius: 50, padding: 4, gap: 4 },
+  toggleBtn: { flex: 1, padding: '10px 12px', borderRadius: 50, border: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
+  toggleOn: { background: '#fff', color: 'var(--dark)', boxShadow: '0 1px 6px rgba(0,0,0,0.08)' },
+  fileDrop: { display: 'block', textAlign: 'center', padding: 18, borderRadius: 12, border: '2px dashed var(--border)', background: 'var(--card2)', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--secondary)', wordBreak: 'break-all' },
   codeRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' },
 }

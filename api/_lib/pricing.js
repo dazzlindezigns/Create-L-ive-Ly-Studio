@@ -29,14 +29,26 @@ export async function priceCart(items, code, shippingFee = 0) {
   const { data: products, error } = await db().from('products').select('*').in('id', ids).eq('active', true)
   if (error) throw new HttpError(500, error.message)
 
-  const lines = items.map(i => {
+  const seenDigital = new Set()
+  const lines = items.filter(i => {
+    const p = products.find(x => x.id === i.productId)
+    if (p?.kind !== 'digital') return true
+    if (seenDigital.has(p.id)) return false
+    seenDigital.add(p.id)
+    return true
+  }).map(i => {
     const p = products.find(x => x.id === i.productId)
     if (!p) throw new HttpError(400, 'A product in your cart is no longer available')
-    const quantity = Math.max(1, Math.min(10000, parseInt(i.quantity, 10) || 1))
-    const option = p.options?.length ? (p.options.includes(i.option) ? i.option : p.options[0]) : null
+    const digital = p.kind === 'digital'
+    if (digital && !p.digital_file_path) throw new HttpError(400, `${p.name} isn't available for download yet`)
+    // One copy of a digital file per order — the download link covers it.
+    const quantity = digital ? 1 : Math.max(1, Math.min(10000, parseInt(i.quantity, 10) || 1))
+    const option = !digital && p.options?.length ? (p.options.includes(i.option) ? i.option : p.options[0]) : null
     return {
       productId: p.id,
       productName: p.name,
+      kind: digital ? 'digital' : 'physical',
+      ...(digital ? { digitalFilePath: p.digital_file_path, digitalFileName: p.digital_file_name } : {}),
       option,
       quantity,
       unitPrice: round2(p.price),

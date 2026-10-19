@@ -123,6 +123,12 @@ export default function QuoteReview() {
         </div>
       )}
 
+      {(order.shop_cart || []).some(l => l.kind === 'digital') && remaining === 0 && Number(order.price) > 0 && !waiting && (
+        <Link to={`/downloads/${order.id}`} style={{ textDecoration: 'none' }}>
+          <Button block variant="gradient">⬇️ Get your downloads</Button>
+        </Link>
+      )}
+
       {order.proof_status === 'sent' && (
         <Link to={`/proof/${order.id}`} style={{ textDecoration: 'none' }}>
           <Button block variant="secondary">Your proof is ready — review it →</Button>
@@ -194,7 +200,7 @@ function PayButton({ orderId, option, primary }) {
 }
 
 function Progress({ order }) {
-  if (['cancelled', 'declined'].includes(order.status) || order.price == null) return null
+  if (['cancelled', 'declined'].includes(order.status) || order.price == null || order.fulfillment === 'digital') return null
   return (
     <div style={styles.progress}>
       {STEPS.map((s, i) => {

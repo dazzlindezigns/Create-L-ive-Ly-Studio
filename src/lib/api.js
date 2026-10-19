@@ -18,12 +18,13 @@ export async function api(path, { body, auth = false, method } = {}) {
   return data
 }
 
-// Uploads a file through a signed URL and returns its public URL.
+// Uploads a file through a signed URL. Returns its public URL — or, for the private
+// digital-products bucket, its storage path (there is no public URL by design).
 export async function uploadFile(file, bucket = 'order-files', { auth = false } = {}) {
   const { path, token, publicUrl } = await api('get-upload-url', { body: { filename: file.name, bucket }, auth })
   const { error } = await supabase.storage.from(bucket).uploadToSignedUrl(path, token, file, { contentType: file.type || undefined })
   if (error) throw new Error(`Upload failed: ${error.message}`)
-  return publicUrl
+  return publicUrl || path
 }
 
 export const APP_URL = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '')

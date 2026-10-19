@@ -2,7 +2,7 @@
 
 Custom order + shop management for a sticker / label / sticker bar business. Modeled on the MakerQue (DCIoS) app.
 
-**Customer side:** custom order form (`/`), quote review with e-sign + Square payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`).
+**Customer side:** custom order form (`/`), quote review with e-sign + Square payment (`/quote/:id`), proof approval (`/proof/:id`), shop with cart, bulk discounts and discount codes (`/shop/products`) selling both physical products and digital downloads, and a downloads page for paid digital orders (`/downloads/:id`).
 
 **Admin side** (login required): dashboard with status pipeline, live updates, shop open/closed toggle and push notifications (`/dashboard`), full order management with proofs, payments, EasyPost labels and admin-only PO numbers (`/dashboard/order/:id`), AI price calculator + invoices (`/dashboard/calculator`), products, discount codes and shop settings (`/dashboard/products`).
 
@@ -45,6 +45,13 @@ npx vercel dev               # runs the Vite app AND /api functions
 - **Money is computed server-side.** Shop totals, bulk discounts, discount codes and deposit/balance amounts are recalculated from the database before a Square link is created.
 - **One function for all routes.** `api/[action].js` dispatches to `api/_handlers/*.js`, so the whole API counts as 2 functions on Vercel's Hobby plan (limit 12). `api/square-webhook.js` is separate because it needs the raw request body.
 - **Payments:** each Square checkout is recorded in `payments`; the webhook matches it by Square order ID, updates `amount_paid`, and moves the order to `confirmed`. Cash/Zelle/etc. can be recorded manually on the order page.
+
+## Digital products
+- In **Shop → + Digital**, add a name, price and preview images, then upload the file buyers will receive (PDF, ZIP, PNG, SVG, cut files, Procreate, fonts, etc., up to 50 MB; zip multiple files together).
+- Files live in the **private** `digital-products` storage bucket. The browser never sees the storage path.
+- Physical and digital items can share one cart. Download-only carts skip delivery and shipping. Digital items are one copy per order and don't count toward bulk discounts unless she ticks that box.
+- When Square confirms full payment, the webhook emails the buyer a link to `/downloads/:orderId`, and download-only orders are marked **Complete**. Each visit to that page creates fresh links that expire after 24 hours, so the emailed link keeps working while shared file links don't.
+- If someone pays another way, record the payment on the order, then tap **Email download link**.
 
 ## Order statuses
 `pending → quote_sent → confirmed → proof_sent ⇄ revisions_requested → proof_approved → in_production → ready_for_pickup | shipped → completed` (plus `invoice_sent`, `payment_pending` for shop checkouts, `declined`, `cancelled`).

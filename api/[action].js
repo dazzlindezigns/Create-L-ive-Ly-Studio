@@ -17,6 +17,7 @@ const routes = {
   'validate-discount':   () => import('./_handlers/validate-discount.js'),
   'create-shop-order':   () => import('./_handlers/create-shop-order.js'),
   'push-config':         () => import('./_handlers/push-config.js'),
+  'get-downloads':       () => import('./_handlers/get-downloads.js'),
   // Admin (require a signed-in admin)
   'send-quote':          () => import('./_handlers/send-quote.js'),
   'send-proof':          () => import('./_handlers/send-proof.js'),
@@ -28,6 +29,7 @@ const routes = {
   'save-settings':       () => import('./_handlers/save-settings.js'),
   'save-push-sub':       () => import('./_handlers/save-push-sub.js'),
   'test-push':           () => import('./_handlers/test-push.js'),
+  'send-downloads':      () => import('./_handlers/send-downloads.js'),
 }
 
 export default async function handler(req, res) {

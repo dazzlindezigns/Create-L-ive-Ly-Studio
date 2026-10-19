@@ -19,6 +19,7 @@ Order management PWA for **[HER BUSINESS NAME]** (custom stickers, labels, stick
 - Email HTML must escape user input with `esc()` / `escBr()` from `api/_lib/email.js`.
 - AI calculator: `supplyLines[].qty` is the **total batch quantity** — don't multiply by `item.qty`.
 - Column `stripe_payment_url` holds the latest Square link (name kept from the reference schema).
+- **Digital products** (`products.kind = 'digital'`): files go in the PRIVATE `digital-products` bucket; only `digital_file_path` is stored. Never select or return that path to customers (`get-products` omits it; `publicOrder()` strips `digitalFilePath` from `shop_cart`). Buyers get signed URLs only via `api/_handlers/get-downloads.js`, and only when paid in full. Shared logic lives in `api/_lib/downloads.js`.
 
 ## Key files
 | Path | Purpose |

@@ -59,6 +59,8 @@ export function publicOrder(order) {
   for (const k of ADMIN_ONLY) delete out[k]
   // Calculator breakdown keeps supply costs + labor internally; customers only see invoice lines.
   out.quote_breakdown = order.quote_breakdown?.lines ? { lines: order.quote_breakdown.lines } : null
+  // Storage paths for digital files stay server-side; customers get signed links via /api/get-downloads.
+  if (Array.isArray(order.shop_cart)) out.shop_cart = order.shop_cart.map(({ digitalFilePath, ...line }) => line)
   return out
 }
 

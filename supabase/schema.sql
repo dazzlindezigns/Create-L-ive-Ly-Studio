@@ -42,7 +42,7 @@ create table if not exists orders (
   notes                 text,
   image_urls            text[],
   source                text default 'form',          -- 'form' | 'shop' | 'invoice'
-  fulfillment           text default 'pickup',        -- 'pickup' | 'shipping'
+  fulfillment           text default 'pickup',        -- 'pickup' | 'shipping' | 'digital' (download-only shop orders)
   shipping_address      jsonb,                        -- { name, street, city, state, zip }
 
   -- Customer
@@ -79,6 +79,7 @@ create table if not exists orders (
   shop_cart             jsonb,
   shop_discount_code    text,
   shop_discount_amount  numeric,
+  download_count        integer default 0,            -- digital download links generated
 
   -- Proofs
   proof_urls            text[],
@@ -135,7 +136,10 @@ create table if not exists products (
   description           text,
   price                 numeric not null,
   image_urls            text[],
-  options               text[],                       -- e.g. sizes / finishes the customer picks from
+  kind                  text not null default 'physical', -- 'physical' | 'digital'
+  options               text[],                       -- e.g. sizes / finishes the customer picks from (physical only)
+  digital_file_path     text,                         -- path in the PRIVATE digital-products bucket (never sent to the browser)
+  digital_file_name     text,                         -- original filename shown to buyers
   bulk_pricing_enabled  boolean default true,
   active                boolean default true,
   sort_order            integer default 0
@@ -238,4 +242,11 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('order-files', 'order-files', true, 26214400),     -- 25 MB
        ('order-proofs', 'order-proofs', true, 26214400),
        ('product-images', 'product-images', true, 10485760) -- 10 MB
+on conflict (id) do nothing;
+
+-- digital-products: PRIVATE. Files are only reachable through short-lived signed URLs
+-- that /api/get-downloads creates after an order is paid in full.
+-- 50 MB matches Supabase's free-plan per-file cap; raise it on a paid plan if needed.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('digital-products', 'digital-products', false, 52428800)
 on conflict (id) do nothing;

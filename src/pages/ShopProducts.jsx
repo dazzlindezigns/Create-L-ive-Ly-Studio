@@ -26,15 +26,24 @@ export default function ShopProducts() {
 
   const shopOpen = settings.shop_open !== false && settings.shop_open !== 'false'
   const byId = useMemo(() => Object.fromEntries((products || []).map(p => [p.id, p])), [products])
-  const lines = cart.filter(c => byId[c.productId]).map(c => ({ ...c, product: byId[c.productId], total: round2(byId[c.productId].price * c.quantity) }))
+  const lines = cart.filter(c => byId[c.productId]).map(c => {
+    const product = byId[c.productId]
+    const quantity = product.kind === 'digital' ? 1 : c.quantity
+    return { ...c, quantity, product, total: round2(product.price * quantity) }
+  })
   const count = lines.reduce((s, l) => s + l.quantity, 0)
   const selected = params.get('p') ? byId[params.get('p')] : null
+  const [kindFilter, setKindFilter] = useState('all')
+  const hasBothKinds = (products || []).some(p => p.kind === 'digital') && (products || []).some(p => p.kind !== 'digital')
+  const shown = (products || []).filter(p => kindFilter === 'all' || (kindFilter === 'digital') === (p.kind === 'digital'))
 
   const add = (product, option, quantity) => {
+    const digital = product.kind === 'digital'
     const key = `${product.id}|${option || ''}`
+    // Digital items are one copy per order — adding again doesn't stack.
     setCart(prev => prev.some(c => c.key === key)
-      ? prev.map(c => c.key === key ? { ...c, quantity: c.quantity + quantity } : c)
-      : [...prev, { key, productId: product.id, option, quantity }])
+      ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity } : c)
+      : [...prev, { key, productId: product.id, option: digital ? null : option, quantity: digital ? 1 : quantity }])
     setParams({})
     setCartOpen(true)
   }
@@ -59,11 +68,20 @@ export default function ShopProducts() {
         {products.length === 0 ? (
           <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)' }}>No products yet — check back soon!</div>
         ) : (
+          <>
+          {hasBothKinds && (
+            <div style={styles.filters}>
+              {[['all', 'All'], ['physical', '📦 Physical'], ['digital', '⬇️ Digital downloads']].map(([k, label]) => (
+                <button key={k} onClick={() => setKindFilter(k)} style={{ ...styles.filter, ...(kindFilter === k ? styles.filterOn : {}) }}>{label}</button>
+              ))}
+            </div>
+          )}
           <div style={styles.grid}>
-            {products.map(p => (
+            {shown.map(p => (
               <button key={p.id} onClick={() => setParams({ p: p.id })} style={styles.tile}>
-                <div style={styles.imgWrap}>
-                  {p.image_urls?.[0] ? <img src={p.image_urls[0]} alt={p.name} style={styles.img} /> : <div style={styles.noImg}>✨</div>}
+                <div style={{ ...styles.imgWrap, position: 'relative' }}>
+                  {p.image_urls?.[0] ? <img src={p.image_urls[0]} alt={p.name} style={styles.img} /> : <div style={styles.noImg}>{p.kind === 'digital' ? '⬇️' : '✨'}</div>}
+                  {p.kind === 'digital' && <span style={styles.digitalTag}>Digital</span>}
                 </div>
                 <div style={{ padding: '10px 12px 14px', textAlign: 'left' }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
@@ -72,6 +90,7 @@ export default function ShopProducts() {
               </button>
             ))}
           </div>
+          </>
         )}
         <p style={{ ...ui.muted, textAlign: 'center', marginTop: 24 }}>
           Need something custom? <Link to="/">Request a custom order</Link>
@@ -97,6 +116,7 @@ function ProductModal({ product, cartQty, onClose, onAdd, disabled }) {
   const [option, setOption] = useState(product.options?.[0] || null)
   const [qty, setQty] = useState(1)
   const [imgIdx, setImgIdx] = useState(0)
+  const isDigital = product.kind === 'digital'
   const nextTier = getBulkTier(cartQty + qty)
   return (
     <Modal title={product.name} onClose={onClose}>
@@ -114,13 +134,21 @@ function ProductModal({ product, cartQty, onClose, onAdd, disabled }) {
       )}
       <div style={{ fontWeight: 800, fontSize: 22, color: 'var(--primary)', margin: '12px 0 6px' }}>{fmt(product.price)}</div>
       {product.description && <p style={{ whiteSpace: 'pre-wrap', color: 'var(--mid)', fontSize: 14, lineHeight: 1.6 }}>{product.description}</p>}
+      {isDigital ? (
+        <div style={styles.digitalNote}>
+          ⬇️ <strong>Instant digital download</strong>
+          {product.digital_file_name && <> · {product.digital_file_name.split('.').pop().toUpperCase()} file</>}
+          <div style={{ ...ui.hint, marginTop: 4 }}>Your download link is emailed as soon as payment goes through. Nothing is shipped.</div>
+        </div>
+      ) : (
       <div style={{ ...ui.row, marginTop: 14 }}>
         {product.options?.length > 0 && (
           <Field label="Option"><Select value={option} onChange={e => setOption(e.target.value)} options={product.options} /></Field>
         )}
         <Field label="Quantity"><Input type="number" min={1} value={qty} onChange={e => setQty(Math.max(1, parseInt(e.target.value, 10) || 1))} /></Field>
       </div>
-      {product.bulk_pricing_enabled !== false && (
+      )}
+      {!isDigital && product.bulk_pricing_enabled !== false && (
         <div style={styles.bulkTable}>
           {BULK_TIERS.slice().reverse().map(t => {
             const hit = nextTier?.min === t.min
@@ -134,7 +162,7 @@ function ProductModal({ product, cartQty, onClose, onAdd, disabled }) {
         </div>
       )}
       <Button block disabled={disabled} onClick={() => onAdd(product, option, qty)} style={{ marginTop: 14 }}>
-        {disabled ? 'Shop is closed' : `Add to cart · ${fmt(product.price * qty)}`}
+        {disabled ? 'Shop is closed' : `Add to cart · ${fmt(product.price * (isDigital ? 1 : qty))}`}
       </Button>
     </Modal>
   )
@@ -159,7 +187,9 @@ function CartModal({ lines, settings, shopOpen, onClose, setQty, onCheckedOut })
   const bulkDiscount = tier ? round2(bulkLines.reduce((s, l) => s + l.total, 0) * tier.pct / 100) : 0
   const afterBulk = subtotal - bulkDiscount
   const codeDiscount = discount ? round2(discount.type === 'percent' ? afterBulk * discount.value / 100 : Math.min(discount.value, afterBulk)) : 0
-  const shipping = f.fulfillment === 'shipping' ? Number(settings.shop_shipping_fee) || 0 : 0
+  const hasPhysical = lines.some(l => l.product.kind !== 'digital')
+  const hasDigital = lines.some(l => l.product.kind === 'digital')
+  const shipping = hasPhysical && f.fulfillment === 'shipping' ? Number(settings.shop_shipping_fee) || 0 : 0
   const total = Math.max(0, round2(afterBulk - codeDiscount + shipping))
 
   const applyCode = async () => {
@@ -194,7 +224,7 @@ function CartModal({ lines, settings, shopOpen, onClose, setQty, onCheckedOut })
           items: lines.map(l => ({ productId: l.productId, option: l.option, quantity: l.quantity })),
           discountCode: discount?.code || null,
           customerName: f.name, customerEmail: f.email, customerPhone: f.phone, notes: f.notes,
-          fulfillment: f.fulfillment,
+          fulfillment: hasPhysical ? f.fulfillment : 'digital',
           shippingAddress: { street: f.street, street2: f.street2, city: f.city, state: f.state, zip: f.zip },
           designFiles: files.filter(x => x.url).map(x => x.url),
         },
@@ -223,13 +253,17 @@ function CartModal({ lines, settings, shopOpen, onClose, setQty, onCheckedOut })
             <div key={l.key} style={styles.cartLine}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{l.product.name}</div>
-                <div style={ui.muted}>{l.option ? `${l.option} · ` : ''}{fmt(l.product.price)} each</div>
+                <div style={ui.muted}>{l.product.kind === 'digital' ? 'Digital download' : `${l.option ? `${l.option} · ` : ''}${fmt(l.product.price)} each`}</div>
               </div>
+              {l.product.kind === 'digital' ? (
+                <button onClick={() => setQty(l.key, 0)} style={{ ...styles.qtyBtn, width: 'auto', padding: '0 10px', fontSize: 12, fontWeight: 600 }}>Remove</button>
+              ) : (
               <div style={styles.qty}>
                 <button onClick={() => setQty(l.key, l.quantity - 1)} style={styles.qtyBtn}>−</button>
                 <span style={{ minWidth: 26, textAlign: 'center', fontWeight: 700 }}>{l.quantity}</span>
                 <button onClick={() => setQty(l.key, l.quantity + 1)} style={styles.qtyBtn}>+</button>
               </div>
+              )}
               <div style={{ width: 70, textAlign: 'right', fontWeight: 700 }}>{fmt(l.total)}</div>
             </div>
           ))}
@@ -254,13 +288,18 @@ function CartModal({ lines, settings, shopOpen, onClose, setQty, onCheckedOut })
             <Field label="Email"><Input type="email" autoComplete="email" value={f.email} onChange={set('email')} required /></Field>
             <Field label="Phone (optional)"><Input type="tel" autoComplete="tel" value={f.phone} onChange={set('phone')} /></Field>
           </div>
-          <Field label="Delivery">
+          {hasDigital && (
+            <div style={styles.digitalNote}>⬇️ Download links for your digital items are emailed to <strong>{f.email || 'you'}</strong> right after payment.</div>
+          )}
+          {hasPhysical && (
+          <Field label={hasDigital ? 'Delivery for physical items' : 'Delivery'}>
             <Select value={f.fulfillment} onChange={set('fulfillment')} options={[
               { value: 'pickup', label: BRAND.pickupLabel },
               { value: 'shipping', label: `Ship to me${Number(settings.shop_shipping_fee) ? ` (+${fmt(settings.shop_shipping_fee)})` : ''}` },
             ]} />
           </Field>
-          {f.fulfillment === 'shipping' && (
+          )}
+          {hasPhysical && f.fulfillment === 'shipping' && (
             <>
               <Field label="Street"><Input autoComplete="address-line1" value={f.street} onChange={set('street')} required /></Field>
               <Field label="Apt / suite (optional)"><Input autoComplete="address-line2" value={f.street2} onChange={set('street2')} /></Field>
@@ -272,10 +311,12 @@ function CartModal({ lines, settings, shopOpen, onClose, setQty, onCheckedOut })
             </>
           )}
           <Field label="Notes (optional)"><TextArea rows={2} value={f.notes} onChange={set('notes')} /></Field>
+          {hasPhysical && (
           <label style={{ ...ui.hint, cursor: 'pointer', color: 'var(--secondary)', fontWeight: 600 }}>
             <input type="file" multiple accept="image/*,.pdf,.svg,.ai,.eps,.psd,.zip" onChange={onFiles} style={{ display: 'none' }} />
             {uploading ? 'Uploading…' : '+ Attach a design file (optional)'}
           </label>
+          )}
           {files.length > 0 && <div style={ui.hint}>{files.map(x => `${x.name}${x.url ? ' ✓' : '…'}`).join(' · ')}</div>}
           {totals}
           {error && <div style={ui.error}>{error}</div>}
@@ -305,6 +346,11 @@ const styles = {
   bulkRow: { display: 'flex', justifyContent: 'space-between', padding: '7px 12px', borderBottom: '1px solid var(--border)' },
   cartLine: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' },
   qty: { display: 'flex', alignItems: 'center', gap: 4 },
+  filters: { display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 14 },
+  filter: { padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
+  filterOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
+  digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--accent)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
+  digitalNote: { background: 'var(--card2)', borderRadius: 12, padding: '12px 14px', fontSize: 14, marginTop: 12 },
   qtyBtn: { width: 28, height: 28, borderRadius: '50%', border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 },
   line: { display: 'flex', justifyContent: 'space-between', padding: '3px 0' },
 }

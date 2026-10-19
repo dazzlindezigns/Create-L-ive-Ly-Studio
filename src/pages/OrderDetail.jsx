@@ -90,7 +90,7 @@ export default function OrderDetail() {
             <Row k="Need by" v={order.need_by && new Date(order.need_by + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} />
             <Row k="Delivery" v={order.fulfillment === 'shipping'
               ? `Ship to ${[order.shipping_address?.street, order.shipping_address?.street2, order.shipping_address?.city].filter(Boolean).join(', ')}, ${order.shipping_address?.state || ''} ${order.shipping_address?.zip || ''}`
-              : BRAND.pickupLabel} />
+              : order.fulfillment === 'digital' ? 'Digital download (nothing to ship)' : BRAND.pickupLabel} />
           </dl>
           {order.description && <p style={styles.pre}>{order.description}</p>}
           {order.notes && <><div style={{ ...ui.label, marginTop: 12 }}>Customer notes</div><p style={styles.pre}>{order.notes}</p></>}
@@ -112,7 +112,12 @@ export default function OrderDetail() {
             'Proof message copied — paste it into a text!',
           )} />
 
+        {(order.shop_cart || []).some(l => l.kind === 'digital') && (
+          <DigitalSection order={order} flash={flash} onCopy={() => copy(`${APP_URL}/downloads/${order.id}`, 'Download link copied')} />
+        )}
+
         {/* Fulfillment */}
+        {order.fulfillment !== 'digital' && (
         <section style={ui.card}>
           <h2 style={ui.h2}>{order.fulfillment === 'shipping' ? 'Shipping' : 'Pickup'}</h2>
           {order.tracking_number ? (
@@ -133,6 +138,7 @@ export default function OrderDetail() {
             )}
           </div>
         </section>
+        )}
 
         {/* Danger zone */}
         <section style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -152,6 +158,34 @@ export default function OrderDetail() {
       {payOpen && <PaymentModal order={order} onClose={() => setPayOpen(false)} onSaved={(msg) => { setPayOpen(false); flash(msg); load() }} flash={flash} />}
       {toast}
     </div>
+  )
+}
+
+// ── Digital downloads ───────────────────────────────────────────────────────
+function DigitalSection({ order, flash, onCopy }) {
+  const [sending, setSending] = useState(false)
+  const items = order.shop_cart.filter(l => l.kind === 'digital')
+  const paidInFull = Number(order.price) > 0 && Number(order.amount_paid) >= Number(order.price) - 0.009
+  const resend = async () => {
+    setSending(true)
+    try { await api('send-downloads', { body: { orderId: order.id }, auth: true }); flash('Download email sent ✉️') }
+    catch (e) { flash(e.message, 'error') } finally { setSending(false) }
+  }
+  return (
+    <section style={ui.card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h2 style={ui.h2}>Digital downloads</h2>
+        <span style={ui.muted}>{paidInFull ? `Opened ${order.download_count || 0}×` : 'Locked until paid'}</span>
+      </div>
+      {items.map((l, i) => (
+        <div key={i} style={styles.line}><span>{l.productName}</span><span style={ui.muted}>{l.digitalFileName}</span></div>
+      ))}
+      <div style={{ ...ui.row, marginTop: 12 }}>
+        <Button variant="secondary" small loading={sending} disabled={!paidInFull} onClick={resend}>Email download link</Button>
+        <Button variant="ghost" small onClick={onCopy}>Copy download link</Button>
+      </div>
+      {!paidInFull && <div style={ui.hint}>The link unlocks automatically after a Square payment. If they paid another way, record the payment first, then email the link.</div>}
+    </section>
   )
 }
 

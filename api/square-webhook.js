@@ -5,6 +5,7 @@ import { db, APP_URL, firstName } from './_lib/core.js'
 import { verifySquareSignature } from './_lib/square.js'
 import { notifyAdmins } from './_lib/push.js'
 import { layout, rows, panel, button, emailMaker, sendEmail, esc } from './_lib/email.js'
+import { digitalLines, hasPhysicalLines, sendDownloadEmail } from './_lib/downloads.js'
 import { fmt, round2 } from '../src/lib/money.js'
 
 export const config = { api: { bodyParser: false } }
@@ -72,7 +73,9 @@ async function handleCompleted(payment) {
   // Any completed payment satisfies the deposit requirement.
   const updates = { amount_paid: amountPaid, stripe_payment_url: null, deposit_paid: true, deposit_paid_at: order.deposit_paid_at || now }
   if (fullyPaid) { updates.balance_paid = true; updates.paid_at = now }
-  if (PRE_PAYMENT.includes(order.status)) updates.status = 'confirmed'
+  const isDigital = digitalLines(order).length > 0
+  // Download-only orders are done the moment they're paid; anything physical still needs making.
+  if (PRE_PAYMENT.includes(order.status)) updates.status = fullyPaid && isDigital && !hasPhysicalLines(order) ? 'completed' : 'confirmed'
   await supabase.from('orders').update(updates).eq('id', order.id)
 
   const label = { deposit: 'Deposit', balance: 'Balance', full: 'Payment' }[row.kind] || 'Payment'
@@ -108,5 +111,8 @@ async function handleCompleted(payment) {
           ${button('View your order', `${APP_URL}/quote/${order.id}`)}`,
       }),
     }).catch(e => console.error('receipt email failed', e)),
+    fullyPaid && isDigital
+      ? sendDownloadEmail({ ...order, ...updates }).catch(e => console.error('download email failed', e))
+      : null,
   ])
 }
