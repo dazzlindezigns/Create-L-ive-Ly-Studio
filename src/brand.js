@@ -96,6 +96,22 @@ export const STICKER_BAR = {
     .map(k => `/img/sticker-bar/${k}.webp`),
 }
 
+// Communities and products she recommends (affiliate links). Shown on the homepage.
+// Keep `disclosure` — affiliate links must say she may earn a commission.
+export const PARTNERS = [
+  {
+    key: 'black-girls-journal-club',
+    name: 'Black Girls Journal Club',
+    kicker: 'Lifetime Membership',
+    image: '/img/partners/black-girls-journal-club.webp',
+    imageAlt: 'Black Girls Journal Club is a space where Black women come to reflect, grow, and write their stories with ease.',
+    description: 'A creative community for Black women who love journaling, crafting, digital design and learning how to turn their creativity into something more.',
+    cta: 'Join the Lifetime Membership',
+    url: 'https://shop.beacons.ai/blackgirlsjournalclub/d1abc344-6082-47e0-9862-7b7876803408?affiliateLinkId=f596d159-8e4a-4e96-b16a-9090a977451f',
+    disclosure: 'Affiliate link: I may earn a commission if you purchase through this link, at no additional cost to you.',
+  },
+]
+
 // Custom order form — plain labels stored on the order. Edit freely.
 export const PRODUCT_TYPES = [
   'Custom stickers & labels',

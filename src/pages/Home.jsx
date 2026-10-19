@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { BRAND, COLLECTIONS, SITE, STICKER_BAR } from '../brand'
+import { BRAND, COLLECTIONS, PARTNERS, SITE, STICKER_BAR } from '../brand'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 import { api } from '../lib/api'
 import { fmt } from '../lib/money'
@@ -148,6 +148,23 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Recommended communities (affiliate) */}
+      {PARTNERS.map(p => (
+        <section key={p.key} id={p.key} className="container" style={{ paddingTop: 48, scrollMarginTop: 80 }}>
+          <div style={s.partner} className="split">
+            <img src={p.image} alt={p.imageAlt} loading="lazy" style={s.partnerImg} />
+            <div style={{ padding: 'clamp(4px, 2vw, 16px)' }}>
+              <div style={s.tileKicker}>Community we love</div>
+              <h2 style={{ ...s.h2, marginTop: 8, textTransform: 'uppercase', letterSpacing: '0.02em' }}>{p.name}</h2>
+              <div style={{ fontSize: 16, fontWeight: 600, marginTop: 10 }}>{p.kicker}</div>
+              <p style={s.featureText}>{p.description}</p>
+              <p style={s.disclosure}>{p.disclosure}</p>
+              <a href={p.url} target="_blank" rel="sponsored noopener noreferrer" style={{ ...s.btnPink, marginTop: 8 }}>{p.cta} ↗</a>
+            </div>
+          </div>
+        </section>
+      ))}
+
       {/* About */}
       <section id="about" className="container" style={{ paddingTop: 48, scrollMarginTop: 80 }}>
         <div style={s.about}>
@@ -199,5 +216,8 @@ const s = {
   sheetBadge: { position: 'absolute', top: 6, left: 6, background: 'var(--primary)', color: '#fff', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '3px 7px', borderRadius: 20 },
   sheetName: { display: 'block', padding: '6px 8px 8px', fontSize: 11, fontWeight: 700, lineHeight: 1.35 },
   perk: { background: 'rgba(255,255,255,0.85)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px' },
+  partner: { borderRadius: 22, border: '1px solid var(--border)', background: '#fff', padding: 'clamp(16px, 3vw, 28px)', boxShadow: '0 12px 35px rgba(148,82,103,0.06)' },
+  partnerImg: { width: '100%', maxWidth: 460, height: 'auto', display: 'block', margin: '0 auto', borderRadius: 16 },
+  disclosure: { fontSize: 13, fontStyle: 'italic', color: 'var(--muted)', lineHeight: 1.7, borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '12px 0', margin: '4px 0 18px' },
   about: { borderRadius: 22, border: '1px solid var(--border)', background: 'rgba(255,255,255,0.75)', padding: '28px 26px' },
 }
