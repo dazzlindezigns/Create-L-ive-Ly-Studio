@@ -13,12 +13,12 @@ export const BRAND = {
   shortName: 'Create(L)ive(Ly)',
   tagline: 'Custom creations made with purpose',
   subTagline: 'Brand Merch • Custom Gifts • Keepsakes • And More',
-  website: 'https://createlivelyinc.com',
+  website: 'https://createlivelyinc.com', // her Payhip store — not linked from the app, since she may retire it
   logo: '/logo.png',
-  ownerFirstName: '[OWNER FIRST NAME]', // TODO(brand): used to sign proof notes ("Note from …")
-  location: '[CITY, STATE]',            // TODO(brand)
-  timezone: 'America/Chicago',          // TODO(brand): her IANA time zone, used for timestamps in emails
-  pickupLabel: 'Local pickup ([CITY, STATE])', // TODO(brand)
+  ownerFirstName: 'Candis',
+  location: 'Brooklyn, NY',
+  timezone: 'America/New_York',
+  pickupLabel: 'Local pickup (Brooklyn, NY)',
   instagram: '',
 }
 

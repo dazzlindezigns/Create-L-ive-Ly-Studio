@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- [HER BUSINESS NAME] — order management schema
+-- Create(L)ive(Ly) Studio — order management schema
 -- Run once in Supabase → SQL Editor. Safe to re-run (IF NOT EXISTS everywhere).
 --
 -- Security model:

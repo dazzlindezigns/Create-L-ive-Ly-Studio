@@ -222,7 +222,7 @@ export default function OrderForm() {
                   <Field label="Apt / suite (optional)"><Input autoComplete="address-line2" value={f.street2} onChange={set('street2')} /></Field>
                   <div style={ui.row}>
                     <Field label="City" style={{ flex: 2 }}><Input autoComplete="address-level2" value={f.city} onChange={set('city')} required /></Field>
-                    <Field label="State" style={{ minWidth: 80 }}><Input autoComplete="address-level1" maxLength={2} placeholder="TX" value={f.state} onChange={e => setF(p => ({ ...p, state: e.target.value.toUpperCase() }))} required /></Field>
+                    <Field label="State" style={{ minWidth: 80 }}><Input autoComplete="address-level1" maxLength={2} placeholder="NY" value={f.state} onChange={e => setF(p => ({ ...p, state: e.target.value.toUpperCase() }))} required /></Field>
                     <Field label="ZIP" style={{ minWidth: 100 }}><Input autoComplete="postal-code" inputMode="numeric" value={f.zip} onChange={set('zip')} pattern="\d{5}(-\d{4})?" required /></Field>
                   </div>
                   <div style={ui.hint}>Shipping is added to your quote.</div>

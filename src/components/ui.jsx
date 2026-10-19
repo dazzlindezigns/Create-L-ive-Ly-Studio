@@ -117,7 +117,7 @@ export function Loading({ text = 'Loading…' }) {
 export function BrandHeader({ subtitle }) {
   return (
     <header style={{ textAlign: 'center', padding: '28px 16px 8px' }}>
-      <a href={BRAND.website} aria-label={BRAND.name}>
+      <a href="/" aria-label={BRAND.name}>
         <img src={BRAND.logo} alt={BRAND.name} width={210} style={{ width: 210, maxWidth: '62vw', height: 'auto', display: 'block', margin: '0 auto' }} />
       </a>
       {subtitle && <div style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginTop: 12 }}>{subtitle}</div>}

@@ -2,7 +2,7 @@ import { BRAND, COLORS } from '../../src/brand.js'
 import { MAKER_EMAIL, APP_URL } from './core.js'
 
 // Resend needs a verified sending domain. Set EMAIL_FROM once the domain is verified,
-// e.g. "[HER BUSINESS NAME] <orders@herdomain.com>".
+// e.g. "Create(L)ive(Ly) Studio <orders@createlivelyinc.com>".
 const FROM = process.env.EMAIL_FROM || `${BRAND.name} <onboarding@resend.dev>`
 
 export const esc = (s) => String(s ?? '')
@@ -73,6 +73,6 @@ export function layout({ heading, body, footer = true }) {
     <div style="background:#fff;padding:26px 24px;border:1px solid ${COLORS.border};border-top:none;border-radius:0 0 16px 16px;font-size:15px;color:${COLORS.dark};line-height:1.7;">
       ${body}
     </div>
-    ${footer ? `<p style="text-align:center;font-size:11px;color:${COLORS.muted};margin-top:16px;letter-spacing:0.08em;text-transform:uppercase;">${esc(BRAND.name)} · <a href="${esc(BRAND.website)}" style="color:${COLORS.muted};">${esc(BRAND.website.replace(/^https?:\/\//, ''))}</a></p>` : ''}
+    ${footer ? `<p style="text-align:center;font-size:11px;color:${COLORS.muted};margin-top:16px;letter-spacing:0.08em;text-transform:uppercase;">${esc(BRAND.name)} · ${esc(BRAND.location)}</p>` : ''}
   </div>`
 }

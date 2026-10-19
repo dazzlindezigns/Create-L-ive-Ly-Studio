@@ -234,7 +234,7 @@ function PrintInvoice({ cust, lines, total }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
           <img src={BRAND.logo} alt={BRAND.name} style={{ width: 200, height: 'auto', display: 'block' }} />
-          <div style={{ color: '#777', fontSize: 12, marginTop: 6 }}>{BRAND.website.replace(/^https?:\/\//, '')}</div>
+          <div style={{ color: '#777', fontSize: 12, marginTop: 6 }}>{BRAND.location} · {window.location.host}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 22, fontWeight: 800 }}>INVOICE</div>
