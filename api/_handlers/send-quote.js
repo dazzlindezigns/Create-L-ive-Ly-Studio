@@ -20,6 +20,7 @@ export default async function handler(req, res) {
 
   await sendEmail({
     to: order.customer_email,
+    log: { orderId: order.id, kind: isInvoice ? 'invoice' : 'quote' },
     subject: isInvoice ? `Your invoice is ready, ${firstName(order.customer_name)}` : `Your quote is ready, ${firstName(order.customer_name)}!`,
     html: layout({
       heading: isInvoice ? 'Your invoice' : 'Your quote is ready!',

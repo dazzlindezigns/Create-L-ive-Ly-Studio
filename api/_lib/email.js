@@ -1,5 +1,5 @@
 import { BRAND, COLORS } from '../../src/brand.js'
-import { MAKER_EMAIL, APP_URL } from './core.js'
+import { MAKER_EMAIL, APP_URL, db } from './core.js'
 
 // Resend needs a verified sending domain. Set EMAIL_FROM once the domain is verified,
 // e.g. "Create(L)ive(Ly) Studio <orders@createlivelyinc.com>".
@@ -12,7 +12,9 @@ export const esc = (s) => String(s ?? '')
 // Escapes then keeps line breaks.
 export const escBr = (s) => esc(s).replace(/\n/g, '<br/>')
 
-export async function sendEmail({ to, subject, html, replyTo }) {
+// Sends through Resend. Pass `log: { orderId, kind, bodyText }` for customer emails so they
+// show in the order's email history; failures are logged too, then re-thrown.
+export async function sendEmail({ to, subject, html, replyTo, log }) {
   const key = process.env.RESEND_API_KEY
   if (!key) {
     console.warn('RESEND_API_KEY not set — skipping email:', subject)
@@ -29,12 +31,29 @@ export async function sendEmail({ to, subject, html, replyTo }) {
       html,
     }),
   })
+  const data = resp.ok ? await resp.json().catch(() => ({})) : null
+  const err = resp.ok ? null : await resp.text()
+  if (log) await logEmail({ ...log, to, subject, resendId: data?.id, error: err })
   if (!resp.ok) {
-    const err = await resp.text()
     console.error('Resend error:', resp.status, err)
     throw new Error(`Email failed: ${err}`)
   }
-  return resp.json()
+  return data
+}
+
+async function logEmail({ orderId, kind, bodyText, to, subject, resendId, error }) {
+  try {
+    await db().from('email_log').insert({
+      order_id: orderId || null,
+      to_email: Array.isArray(to) ? to.join(', ') : to,
+      subject,
+      kind,
+      body_text: bodyText || null,
+      resend_id: resendId || null,
+      status: error ? 'failed' : 'sent',
+      error: error ? String(error).slice(0, 500) : null,
+    })
+  } catch (e) { console.error('email_log insert failed', e) }
 }
 
 // Email to the business owner. Never throws — a failed notification must not fail the request.

@@ -20,6 +20,7 @@ export default async function handler(req, res) {
 
   await sendEmail({
     to: order.customer_email,
+    log: { orderId: order.id, kind: 'proof' },
     subject: `Your proof is ready for review, ${firstName(order.customer_name)}!`,
     html: layout({
       heading: 'Your proof is ready!',

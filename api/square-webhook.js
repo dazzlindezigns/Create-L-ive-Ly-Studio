@@ -98,6 +98,7 @@ async function handleCompleted(payment) {
     })),
     sendEmail({
       to: order.customer_email,
+      log: { orderId: order.id, kind: 'receipt' },
       subject: `Payment received — thank you, ${firstName(order.customer_name)}!`,
       html: layout({
         heading: 'Payment received!',

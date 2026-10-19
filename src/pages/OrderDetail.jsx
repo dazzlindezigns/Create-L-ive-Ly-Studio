@@ -7,6 +7,7 @@ import { STATUS, STATUS_ORDER } from '../lib/status'
 import { BRAND, PRODUCT_TYPES } from '../brand'
 import Nav from '../components/Nav'
 import ShipModal from '../components/ShipModal'
+import EmailPanel from '../components/EmailPanel'
 import { ui, Badge, Button, Field, Input, TextArea, Select, Loading, useFlash, Modal } from '../components/ui'
 
 const PRE_PAYMENT = ['pending', 'quote_sent', 'invoice_sent', 'payment_pending']
@@ -120,6 +121,8 @@ export default function OrderDetail() {
             `Hey ${firstName}! Your proof is ready for review. Tap the link below to approve or request changes — this takes less than a minute!\n\n${APP_URL}/proof/${order.id}\n\n— ${BRAND.ownerFirstName}`,
             'Proof message copied — paste it into a text!',
           )} />
+
+        <EmailPanel order={order} flash={flash} />
 
         {(order.shop_cart || []).some(l => l.kind === 'digital') && (
           <DigitalSection order={order} flash={flash} onCopy={() => copy(`${APP_URL}/downloads/${order.id}`, 'Download link copied')} />

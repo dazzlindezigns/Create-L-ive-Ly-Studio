@@ -98,3 +98,44 @@ export const QUOTE_TERMS = [
   'Colors can vary slightly between screens and finished pieces, and 3D-printed items may show small layer lines — that’s part of the handmade process.',
   'You confirm you own or have permission to use any artwork, logos, or images you submit.',
 ]
+
+// Starter templates for emails written in the app (Order → Emails). Placeholders:
+// {firstName} {product} {orderNumber} {owner} {business} {location}. She edits the text before sending.
+export const EMAIL_TEMPLATES = [
+  {
+    key: 'update',
+    label: 'Order update',
+    subject: 'An update on your {product} order',
+    body: "Hi {firstName}!\n\nI wanted to give you a quick update on your order — \n\nThank you so much for your patience and for choosing {business}.\n\nWith love,\n{owner}",
+  },
+  {
+    key: 'pickup',
+    label: 'Ready for pickup',
+    subject: 'Your order is ready for pickup! 🎉',
+    body: "Hi {firstName}!\n\nGreat news — your {product} order is ready for pickup in {location}. Reply to this email with a day and time that works for you and I'll get it ready.\n\nCan't wait for you to see it!\n{owner}",
+  },
+  {
+    key: 'delay',
+    label: 'Running a little behind',
+    subject: 'A quick heads-up about your order',
+    body: "Hi {firstName},\n\nI want to be upfront with you: your {product} order is taking a little longer than planned because \n\nMy new estimate is . I'd rather take the extra time to make it right than rush it. Thank you for understanding.\n\n{owner}",
+  },
+  {
+    key: 'quote_followup',
+    label: 'Quote follow-up',
+    subject: 'Checking in on your quote',
+    body: "Hi {firstName}!\n\nJust checking in on the quote I sent for your {product}. Do you have any questions, or anything you'd like to adjust? I'm happy to help.\n\n{owner}",
+  },
+  {
+    key: 'more_info',
+    label: 'Need more details',
+    subject: 'A few quick questions about your order',
+    body: "Hi {firstName}!\n\nThank you for your request! Before I put your quote together, could you tell me:\n\n• \n• \n\nThanks so much!\n{owner}",
+  },
+  {
+    key: 'thank_you',
+    label: 'Thank you',
+    subject: 'Thank you for your order 💕',
+    body: "Hi {firstName}!\n\nThank you so much for trusting {business} with your {product}. I hope it brings a smile every time you see it.\n\nIf you love it, I'd be so grateful if you shared a photo and tagged us!\n\nWith gratitude,\n{owner}",
+  },
+]

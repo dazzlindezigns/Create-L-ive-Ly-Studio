@@ -82,6 +82,7 @@ export default async function handler(req, res) {
 
     sendEmail({
       to: customerEmail,
+      log: { orderId: order.id, kind: 'request_received' },
       subject: `We got your request, ${firstName(customerName)}!`,
       html: layout({
         heading: 'Request received!',

@@ -17,7 +17,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 - **Never trust client amounts.** Use `paymentOptions()` (`src/lib/money.js`) and `priceCart()` (`api/_lib/pricing.js`) server-side.
 - **New API route:** add `api/_handlers/<name>.js` and register it in `api/[action].js`. Don't add top-level files in `/api` (Hobby plan has a 12-function limit). Throw `HttpError(status, msg)` for errors.
 - Admin endpoints call `await requireAdmin(req)`; the browser sends the token via `api(path, { auth: true })`.
-- Email HTML must escape user input with `esc()` / `escBr()` from `api/_lib/email.js`.
+- Email HTML must escape user input with `esc()` / `escBr()` from `api/_lib/email.js`. Customer-facing emails pass `log: { orderId, kind }` to `sendEmail()` so they appear in the order's email history (`email_log` table, shown by `src/components/EmailPanel.jsx`).
 - AI calculator: `supplyLines[].qty` is the **total batch quantity** — don't multiply by `item.qty`.
 - Column `stripe_payment_url` holds the latest Square link (name kept from the reference schema).
 - **Sticker Bar** bookings come through the custom order form (`STICKER_BAR` in `src/brand.js`): `fulfillment = 'event'`, `quantity` = guests, `need_by` = event date, details in `orders.event_details` jsonb.
@@ -33,4 +33,5 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 | `api/_lib/*` | db/auth, email layout, push, Square, Claude client, tracking links, pricing, validation |
 | `src/pages/OrderDetail.jsx` | Admin order page (quote, payments, proofs, shipping, PO) |
 | `src/components/ShipModal.jsx` | Enter carrier + tracking → "shipped" email |
+| `api/_handlers/send-customer-email.js` / `draft-email.js` | In-app email send / Claude polish (order page → Emails) |
 | `api/_handlers/write-listing.js` / `generate-listing-image.js` | Claude listing copy / Gemini listing photos (admin product editor) |

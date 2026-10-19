@@ -31,6 +31,7 @@ export async function sendDownloadEmail(order) {
   const list = items.map(l => `<li style="margin:4px 0;">${esc(l.productName)}${l.digitalFileName ? ` <span style="color:#999;">(${esc(l.digitalFileName)})</span>` : ''}</li>`).join('')
   await sendEmail({
     to: order.customer_email,
+    log: { orderId: order.id, kind: 'downloads' },
     subject: `Your download${items.length > 1 ? 's are' : ' is'} ready, ${firstName(order.customer_name)}! ✨`,
     html: layout({
       heading: 'Your downloads are ready!',

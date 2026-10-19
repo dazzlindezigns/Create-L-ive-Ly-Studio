@@ -30,6 +30,8 @@ const routes = {
   'save-push-sub':       () => import('./_handlers/save-push-sub.js'),
   'test-push':           () => import('./_handlers/test-push.js'),
   'send-downloads':      () => import('./_handlers/send-downloads.js'),
+  'send-customer-email': () => import('./_handlers/send-customer-email.js'),
+  'draft-email':         () => import('./_handlers/draft-email.js'),
 }
 
 export default async function handler(req, res) {

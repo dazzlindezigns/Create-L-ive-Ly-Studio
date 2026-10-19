@@ -128,6 +128,21 @@ create table if not exists payments (
 );
 create index if not exists payments_order_idx on payments (order_id);
 
+-- ── Email history (every customer email the app sends, automatic or written in-app) ──
+create table if not exists email_log (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz default now(),
+  order_id    uuid references orders(id) on delete cascade,
+  to_email    text not null,
+  subject     text not null,
+  kind        text not null,       -- 'manual' | 'request_received' | 'quote' | 'proof' | 'shipped' | 'receipt' | 'downloads'
+  body_text   text,                -- the message she wrote (manual emails only)
+  resend_id   text,
+  status      text not null default 'sent',  -- 'sent' | 'failed'
+  error       text
+);
+create index if not exists email_log_order_idx on email_log (order_id, created_at desc);
+
 -- ── Shop products ───────────────────────────────────────────────────────────
 create table if not exists products (
   id                    uuid primary key default gen_random_uuid(),
@@ -218,11 +233,12 @@ alter table settings           enable row level security;
 alter table discount_codes     enable row level security;
 alter table push_subscriptions enable row level security;
 alter table appque_submissions enable row level security;
+alter table email_log          enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['admin_users','orders','payments','products','settings',
+  foreach t in array array['admin_users','orders','payments','products','settings','email_log',
                            'discount_codes','push_subscriptions','appque_submissions'] loop
     execute format('drop policy if exists "admin full access" on %I', t);
     execute format('create policy "admin full access" on %I for all to authenticated
