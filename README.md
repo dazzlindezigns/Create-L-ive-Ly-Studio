@@ -62,7 +62,13 @@ Every order page has an **Emails** section:
 - **History:** every email this customer got about the order, both automatic (request received, quote, proof, shipped, receipt, downloads) and hand-written, with failed sends flagged.
 - **Write email:** start from a template (order update, ready for pickup, running behind, quote follow-up, need more details, thank you) or type freely. Choose a link button (order page, proof, or downloads), then send. It goes out in the branded layout from `EMAIL_FROM`.
 - **✨ Polish with Claude:** turns rough notes into a finished email in her voice. It keeps her details, never invents dates or prices, and leaves `[blanks]` she still needs to fill. The app warns her before sending if a blank is left.
-- Customer replies go to `MAKER_EMAIL` (her normal inbox). Templates live in `EMAIL_TEMPLATES` in `src/brand.js`.
+- **Customer replies go to both places.** With `REPLY_DOMAIN` set, each customer email's Reply-To is `order-<id>@REPLY_DOMAIN`. Resend receives the reply and calls `/api/resend-webhook`, which:
+  - saves it (with attachments) to that order's email history and the dashboard **💬 Inbox** tab, and sends a push notification;
+  - forwards a copy to `REPLY_FORWARD_TO` (or `MAKER_EMAIL`) with Reply-To set to the customer, so hitting Reply in her inbox answers the customer directly.
+  - Replies with no per-order address are matched to the sender's latest order.
+  - **Loop guard:** the forward target must not be on `REPLY_DOMAIN`, otherwise forwards would come back into Resend.
+  - Without `REPLY_DOMAIN`, replies go straight to `MAKER_EMAIL` as before.
+- Templates live in `EMAIL_TEMPLATES` in `src/brand.js`.
 
 ## AI listing helpers (Shop → product editor)
 - **✨ Write with Claude:** she jots a few notes ("3D printed name keychain, PLA silk, 5 colors"). Claude reads the notes plus the product photos and fills in the title, description and options in the studio's voice, suggests a price, and lists anything a buyer would still need (like exact size). It's told never to invent specs. Everything stays editable before she saves. Code: `api/_handlers/write-listing.js`.

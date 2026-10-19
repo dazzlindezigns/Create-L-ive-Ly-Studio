@@ -37,6 +37,7 @@ export const QUEUE_PRIORITY = {
 
 export const FILTER_TABS = [
   { key: 'queue',               label: 'Queue' },
+  { key: 'inbox',               label: '💬 Inbox' },
   { key: 'pending',             label: 'New',          badge: true },
   { key: 'quote_sent',          label: 'Quoted' },
   { key: 'payment_pending',     label: 'Awaiting pay', badge: true },

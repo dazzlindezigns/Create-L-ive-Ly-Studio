@@ -1,0 +1,164 @@
+// Resend inbound webhook → customer replies land in the app AND in her inbox.
+// In Resend: Webhooks → add https://<domain>/api/resend-webhook for the `email.received` event,
+// and put its signing secret in RESEND_WEBHOOK_SECRET.
+import crypto from 'crypto'
+import { Resend } from 'resend'
+import PostalMime from 'postal-mime'
+import { db, APP_URL, MAKER_EMAIL, firstName } from './_lib/core.js'
+import { sendEmail, REPLY_DOMAIN, esc } from './_lib/email.js'
+import { notifyAdmins } from './_lib/push.js'
+import { COLORS } from '../src/brand.js'
+
+export const config = { api: { bodyParser: false } }
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+const ORDER_ADDRESS = /^order-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})@/i
+
+async function rawBody(req) {
+  const chunks = []
+  for await (const chunk of req) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+// "Jamie Rivera <jamie@x.com>" → "jamie@x.com"
+const addressOf = (s) => String(s || '').match(/<([^>]+)>/)?.[1]?.trim().toLowerCase() || String(s || '').trim().toLowerCase()
+const domainOf = (addr) => addressOf(addr).split('@')[1] || ''
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).end()
+  const secret = process.env.RESEND_WEBHOOK_SECRET
+  const key = process.env.RESEND_API_KEY
+  if (!secret || !key) return res.status(500).json({ error: 'RESEND_WEBHOOK_SECRET / RESEND_API_KEY not set' })
+
+  const body = await rawBody(req)
+  const resend = new Resend(key)
+  let event
+  try {
+    event = resend.webhooks.verify({
+      payload: body,
+      headers: {
+        id: req.headers['svix-id'] || req.headers['webhook-id'],
+        timestamp: req.headers['svix-timestamp'] || req.headers['webhook-timestamp'],
+        signature: req.headers['svix-signature'] || req.headers['webhook-signature'],
+      },
+      webhookSecret: secret,
+    })
+  } catch {
+    return res.status(401).json({ error: 'Invalid signature' })
+  }
+
+  if (event?.type !== 'email.received') return res.status(200).json({ ok: true, ignored: true })
+
+  try {
+    await handleReceived(resend, event.data)
+  } catch (e) {
+    console.error('resend-webhook error:', e)
+    return res.status(500).json({ error: 'Handler failed' }) // Resend retries; the resend_email_id dedupe makes that safe
+  }
+  return res.status(200).json({ ok: true })
+}
+
+async function handleReceived(resend, data) {
+  const supabase = db()
+  const emailId = data.email_id
+
+  // Webhook retries: skip anything already stored.
+  const { data: seen } = await supabase.from('email_log').select('id').eq('resend_email_id', emailId).maybeSingle()
+  if (seen) return
+
+  const fromAddr = addressOf(data.from)
+  const ourFrom = addressOf(process.env.EMAIL_FROM || '')
+  // Loop guard: never process mail this app sent (e.g. a forward bouncing back into the receiving domain).
+  if (fromAddr && (fromAddr === ourFrom || (REPLY_DOMAIN && domainOf(fromAddr) === REPLY_DOMAIN))) return
+
+  const { data: email, error } = await resend.emails.receiving.get(emailId)
+  if (error || !email) throw new Error(`Could not fetch received email ${emailId}: ${error?.message}`)
+  if (email.headers && Object.keys(email.headers).some(h => h.toLowerCase() === 'x-studio-forwarded')) return
+
+  // Match to an order: per-order reply address first, then the sender's most recent order.
+  const recipients = [...(email.received_for || data.received_for || []), ...(email.to || [])]
+  let orderId = recipients.map(r => addressOf(r).match(ORDER_ADDRESS)?.[1]).find(Boolean) || null
+  let order = null
+  if (orderId) {
+    ({ data: order } = await supabase.from('orders').select('id, customer_name, customer_email, product_type').eq('id', orderId).maybeSingle())
+  }
+  if (!order && fromAddr) {
+    ({ data: order } = await supabase.from('orders').select('id, customer_name, customer_email, product_type')
+      .eq('customer_email', fromAddr).order('created_at', { ascending: false }).limit(1).maybeSingle())
+  }
+  orderId = order?.id || null
+
+  // Attachments come from the raw message (the API response only has metadata).
+  const attachments = []
+  if (email.raw?.download_url && email.attachments?.length) {
+    const raw = await fetch(email.raw.download_url)
+    if (raw.ok) {
+      const parsed = await PostalMime.parse(Buffer.from(await raw.arrayBuffer()), { attachmentEncoding: 'base64' })
+      for (const a of parsed.attachments || []) {
+        const size = Buffer.byteLength(a.content || '', 'base64')
+        if (!a.content || size > MAX_ATTACHMENT_BYTES || a.disposition === 'inline') continue
+        attachments.push({ filename: a.filename || 'attachment', content: a.content, contentType: a.mimeType })
+      }
+    }
+  }
+
+  // Save attachments (customers often reply with artwork) where the order page can show them.
+  const attachmentUrls = []
+  for (const a of attachments) {
+    const safe = a.filename.replace(/[^\w.-]+/g, '_').slice(-80)
+    const path = `inbound/${Date.now()}-${crypto.randomUUID()}-${safe}`
+    const { error: upErr } = await supabase.storage.from('order-files').upload(path, Buffer.from(a.content, 'base64'), { contentType: a.contentType })
+    if (!upErr) attachmentUrls.push(supabase.storage.from('order-files').getPublicUrl(path).data.publicUrl)
+  }
+
+  const subject = email.subject || data.subject || '(no subject)'
+  await supabase.from('email_log').insert({
+    direction: 'in',
+    kind: 'reply',
+    order_id: orderId,
+    from_email: email.from || data.from,
+    to_email: recipients[0] || '',
+    subject,
+    body_text: (email.text || '').slice(0, 20000) || null,
+    attachment_urls: attachmentUrls.length ? attachmentUrls : null,
+    resend_email_id: emailId,
+    status: 'received',
+  })
+
+  const who = order?.customer_name ? firstName(order.customer_name) : fromAddr
+  await notifyAdmins({
+    title: `💬 ${who} replied`,
+    body: `${subject}${attachments.length ? ` · 📎 ${attachments.length}` : ''}`,
+    url: orderId ? `/dashboard/order/${orderId}` : '/dashboard',
+    tag: `reply-${emailId}`,
+  })
+
+  await forwardToInbox({ email, data, subject, order, attachments })
+}
+
+// "Both": a copy goes to her normal inbox. Reply-To is the customer, so hitting Reply there answers them directly.
+async function forwardToInbox({ email, data, subject, order, attachments }) {
+  const forwardTo = (process.env.REPLY_FORWARD_TO || MAKER_EMAIL || '').trim()
+  if (!forwardTo) return
+  if (REPLY_DOMAIN && domainOf(forwardTo) === REPLY_DOMAIN) {
+    // Forwarding into the same domain Resend receives for would loop back into this webhook.
+    console.error(`Not forwarding: ${forwardTo} is on the receiving domain ${REPLY_DOMAIN}. Set REPLY_FORWARD_TO to an inbox elsewhere (e.g. Gmail).`)
+    return
+  }
+
+  const from = email.from || data.from
+  const banner = `<div style="font-family:Arial,sans-serif;background:${COLORS.card2};border:1px solid ${COLORS.border};border-radius:10px;padding:12px 14px;margin:0 0 16px;font-size:13px;color:${COLORS.dark};">
+    💬 Reply from <strong>${esc(from)}</strong>${order ? ` about <strong>${esc(order.product_type)}</strong>` : ''}.
+    Hit Reply to answer them directly${order ? ` · <a href="${APP_URL}/dashboard/order/${order.id}" style="color:${COLORS.primary};font-weight:700;">Open order in the app →</a>` : ''}
+  </div>`
+
+  await sendEmail({
+    to: forwardTo,
+    replyTo: addressOf(from),
+    subject: /^(re|fwd?):/i.test(subject) ? subject : `Re: ${subject}`,
+    html: banner + (email.html || `<pre style="white-space:pre-wrap;font-family:inherit;">${esc(email.text || '')}</pre>`),
+    text: email.text || undefined,
+    headers: { 'X-Studio-Forwarded': '1' },
+    attachments: attachments.map(a => ({ filename: a.filename, content: a.content, content_type: a.contentType })),
+  })
+}

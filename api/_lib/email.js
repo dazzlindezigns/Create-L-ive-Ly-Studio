@@ -12,9 +12,15 @@ export const esc = (s) => String(s ?? '')
 // Escapes then keeps line breaks.
 export const escBr = (s) => esc(s).replace(/\n/g, '<br/>')
 
+// Inbound replies: when REPLY_DOMAIN is set (a domain receiving mail through Resend), customer
+// emails use reply address order-<uuid>@REPLY_DOMAIN so api/resend-webhook.js can match the reply
+// to its order. Without it, replies go straight to MAKER_EMAIL as before.
+export const REPLY_DOMAIN = (process.env.REPLY_DOMAIN || '').trim().toLowerCase()
+export const orderReplyAddress = (orderId) => (REPLY_DOMAIN && orderId ? `order-${orderId}@${REPLY_DOMAIN}` : null)
+
 // Sends through Resend. Pass `log: { orderId, kind, bodyText }` for customer emails so they
 // show in the order's email history; failures are logged too, then re-thrown.
-export async function sendEmail({ to, subject, html, replyTo, log }) {
+export async function sendEmail({ to, subject, html, text, replyTo, attachments, headers, log }) {
   const key = process.env.RESEND_API_KEY
   if (!key) {
     console.warn('RESEND_API_KEY not set — skipping email:', subject)
@@ -26,9 +32,12 @@ export async function sendEmail({ to, subject, html, replyTo, log }) {
     body: JSON.stringify({
       from: FROM,
       to: Array.isArray(to) ? to : [to],
-      reply_to: replyTo || MAKER_EMAIL || undefined,
+      reply_to: replyTo || orderReplyAddress(log?.orderId) || MAKER_EMAIL || undefined,
       subject,
       html,
+      text,
+      attachments: attachments?.length ? attachments : undefined,
+      headers,
     }),
   })
   const data = resp.ok ? await resp.json().catch(() => ({})) : null

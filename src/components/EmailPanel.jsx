@@ -5,7 +5,7 @@ import { BRAND, EMAIL_TEMPLATES } from '../brand'
 import { ui, Button, Field, Input, TextArea, Select, Badge } from './ui'
 
 const KIND_LABELS = {
-  manual: 'Written by you', request_received: 'Request received', quote: 'Quote', invoice: 'Invoice',
+  reply: 'Customer reply', manual: 'Written by you', request_received: 'Request received', quote: 'Quote', invoice: 'Invoice',
   proof: 'Proof', shipped: 'Shipped', receipt: 'Payment receipt', downloads: 'Downloads',
 }
 
@@ -39,6 +39,11 @@ export default function EmailPanel({ order, flash }) {
   const load = useCallback(async () => {
     const { data } = await supabase.from('email_log').select('*').eq('order_id', order.id).order('created_at', { ascending: false })
     setLog(data || [])
+    // Opening the order counts as reading its customer replies (clears the dashboard Inbox badge).
+    if ((data || []).some(e => e.direction === 'in' && !e.read_at)) {
+      await supabase.from('email_log').update({ read_at: new Date().toISOString() })
+        .eq('order_id', order.id).eq('direction', 'in').is('read_at', null)
+    }
   }, [order.id])
   // Re-fetch when the order changes (e.g. a quote or proof email was just sent) without losing a draft.
   useEffect(() => { load() }, [load, order.updated_at])
@@ -59,6 +64,13 @@ export default function EmailPanel({ order, flash }) {
       setMessage(r.body)
       flash('Polished ✨ — read it over before sending')
     } catch (e) { flash(e.message, 'error') } finally { setPolishing(false) }
+  }
+
+  const replyTo = (e) => {
+    setSubject(/^re:/i.test(e.subject) ? e.subject : `Re: ${e.subject}`)
+    setMessage(`Hi ${(order.customer_name || '').split(' ')[0]}!\n\n\n\n${BRAND.ownerFirstName}`)
+    setComposing(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const send = async () => {
@@ -106,20 +118,40 @@ export default function EmailPanel({ order, flash }) {
       ) : (
         <div style={{ marginTop: composing ? 14 : 0 }}>
           {log.map(e => (
-            <div key={e.id} style={styles.row}>
-              <button onClick={() => setOpen(open === e.id ? null : e.id)} style={styles.rowBtn} disabled={!e.body_text && e.status === 'sent'}>
+            <div key={e.id} style={{ ...styles.row, ...(e.direction === 'in' ? styles.inRow : {}) }}>
+              <button onClick={() => setOpen(open === e.id ? null : e.id)} style={styles.rowBtn} disabled={!e.body_text && !e.attachment_urls && e.status === 'sent'}>
                 <div style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
                   <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.subject}</div>
                   <div style={ui.muted}>
+                    {e.direction === 'in' && <>{e.from_email} · </>}
+                    {e.attachment_urls?.length > 0 && <>📎 {e.attachment_urls.length} · </>}
                     {new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: BRAND.timezone })}
                   </div>
                 </div>
                 {e.status === 'failed'
                   ? <Badge color="var(--danger)" bg="rgba(200,65,75,0.1)">Failed</Badge>
+                  : e.direction === 'in'
+                  ? <Badge color="#fff" bg="var(--primary)">{KIND_LABELS.reply}</Badge>
                   : <Badge color={e.kind === 'manual' ? 'var(--primary)' : 'var(--muted)'} bg="var(--card2)">{KIND_LABELS[e.kind] || e.kind}</Badge>}
               </button>
               {open === e.id && (
-                <div style={styles.body}>{e.status === 'failed' ? `Error: ${e.error}` : e.body_text}</div>
+                <div style={styles.body}>
+                  {e.status === 'failed' ? `Error: ${e.error}` : e.body_text || (e.direction === 'in' ? '(no text — see attachments)' : '')}
+                  {e.attachment_urls?.length > 0 && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                      {e.attachment_urls.map(u => (
+                        <a key={u} href={u} target="_blank" rel="noreferrer" style={styles.attach}>
+                          {/\.(png|jpe?g|gif|webp|heic)$/i.test(u)
+                            ? <img src={u} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                            : `📎 ${decodeURIComponent(u.split('/').pop()).replace(/^\d+-[0-9a-f-]{36}-/, '')}`}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {e.direction === 'in' && (
+                    <div style={{ marginTop: 10 }}><Button small onClick={() => replyTo(e)}>↩ Reply</Button></div>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -133,5 +165,7 @@ const styles = {
   compose: { background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 14, padding: 14, marginBottom: 4 },
   row: { borderBottom: '1px solid var(--border)' },
   rowBtn: { width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', color: 'inherit' },
+  inRow: { background: 'linear-gradient(90deg, var(--card2), transparent)', borderRadius: 10, paddingLeft: 8, marginLeft: -8 },
+  attach: { fontSize: 13, color: 'var(--secondary)', fontWeight: 600, textDecoration: 'none', whiteSpace: 'normal' },
   body: { whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6, color: 'var(--mid)', background: 'var(--card2)', borderRadius: 10, padding: 12, marginBottom: 10 },
 }

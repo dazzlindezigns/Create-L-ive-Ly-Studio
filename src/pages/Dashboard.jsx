@@ -16,6 +16,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState(null)
   const [appque, setAppque] = useState(null)
+  const [inbox, setInbox] = useState(null)
   const [filter, setFilter] = useState(() => sessionStorage.getItem('dash-filter') || 'queue')
   const [search, setSearch] = useState('')
   const [pushState, setPushState] = useState('idle')
@@ -23,14 +24,24 @@ export default function Dashboard() {
   const [openAppque, setOpenAppque] = useState(null)
   const [toast, flash] = useFlash()
 
+  // Customer replies (email_log rows with direction 'in'), newest first.
+  const loadInbox = async () => {
+    const { data } = await supabase.from('email_log')
+      .select('id, created_at, order_id, from_email, subject, body_text, attachment_urls, read_at')
+      .eq('direction', 'in').order('created_at', { ascending: false }).limit(100)
+    setInbox(data || [])
+  }
+
   useEffect(() => {
     loadOrders()
+    loadInbox()
     initPush().then(setPushState).catch(() => setPushState('unsupported'))
     api('get-settings').then(s => setShopOpen(s.shop_open !== false && s.shop_open !== 'false')).catch(() => {})
 
     // Live updates when new orders arrive or customers respond.
     const channel = supabase.channel('orders-feed')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_log' }, () => loadInbox())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [])
@@ -165,7 +176,7 @@ export default function Dashboard() {
         {/* Filters */}
         <div style={styles.tabs} className="scroll-x">
           {FILTER_TABS.map(t => {
-            const n = t.badge ? counts[t.key] || 0 : 0
+            const n = t.key === 'inbox' ? (inbox || []).filter(m => !m.read_at).length : t.badge ? counts[t.key] || 0 : 0
             const on = filter === t.key
             return (
               <button key={t.key} onClick={() => setFilter(t.key)} style={{ ...styles.tab, ...(on ? styles.tabOn : {}) }}>
@@ -175,11 +186,40 @@ export default function Dashboard() {
           })}
         </div>
 
-        {filter !== 'appque' && (
+        {!['appque', 'inbox'].includes(filter) && (
           <input placeholder="Search name, email, product, PO…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...ui.input, marginBottom: 12 }} />
         )}
 
-        {filter === 'appque' ? (
+        {filter === 'inbox' ? (
+          inbox === null ? <Loading /> : inbox.length === 0 ? (
+            <Empty text="No customer replies yet. When customers reply to your emails, they'll show up here (and in your inbox)." />
+          ) : (
+            <div style={styles.list}>
+              {inbox.map(m => {
+                const order = (orders || []).find(o => o.id === m.order_id)
+                const unread = !m.read_at
+                return (
+                  <button key={m.id} onClick={() => m.order_id ? navigate(`/dashboard/order/${m.order_id}`) : setOpenAppque(openAppque === m.id ? null : m.id)}
+                    style={{ ...ui.card, ...styles.orderCard, ...(unread ? { borderColor: 'var(--primary)' } : {}) }}>
+                    <div style={styles.cardTop}>
+                      <div style={{ minWidth: 0, textAlign: 'left' }}>
+                        <div style={{ ...styles.name, fontWeight: unread ? 800 : 600 }}>{unread && <span style={styles.dot} />}{order?.customer_name || m.from_email}</div>
+                        <div style={{ ...styles.product, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.subject}</div>
+                      </div>
+                      <span style={ui.muted}>{new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    </div>
+                    <div style={{ ...styles.meta, marginTop: 6 }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{(m.body_text || '').slice(0, 120)}</span>
+                      {m.attachment_urls?.length > 0 && <span style={styles.pill}>📎 {m.attachment_urls.length}</span>}
+                      {order ? <span style={styles.pill}>{order.product_type}</span> : <span style={styles.pill}>No matching order</span>}
+                    </div>
+                    {!m.order_id && openAppque === m.id && <p style={{ whiteSpace: 'pre-wrap', fontSize: 14, marginTop: 10, textAlign: 'left' }}>{m.body_text}</p>}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        ) : filter === 'appque' ? (
           appque === null ? <Loading /> : appque.length === 0 ? <Empty text="No AppQue submissions yet." /> : (
             <div style={styles.list}>
               {appque.map(a => (
@@ -277,6 +317,7 @@ const styles = {
   name: { fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   product: { fontSize: 13, color: 'var(--mid)', marginTop: 2 },
   meta: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: 'var(--muted)' },
+  dot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)', marginRight: 6, verticalAlign: 'middle' },
   pill: { background: 'var(--card2)', borderRadius: 6, padding: '2px 7px', fontWeight: 600, color: 'var(--mid)' },
 }
 
