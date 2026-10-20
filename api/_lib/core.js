@@ -32,9 +32,15 @@ export async function requireAdmin(req) {
   if (!token) throw new HttpError(401, 'Not signed in')
   const supabase = db()
   const { data, error } = await supabase.auth.getUser(token)
+  // A bad server key fails here too — say so instead of blaming the user's session.
+  if (error && /api key|apikey|jwt.*(malformed|signature)|invalid.*key/i.test(error.message || '')) {
+    console.error('requireAdmin: Supabase rejected the server key:', error.message)
+    throw new HttpError(500, 'The server can’t reach the database — its Supabase key is wrong. Open /api/health for details.')
+  }
   if (error || !data?.user) throw new HttpError(401, 'Session expired — sign in again')
-  const { data: admin } = await supabase
+  const { data: admin, error: adminError } = await supabase
     .from('admin_users').select('user_id').eq('user_id', data.user.id).maybeSingle()
+  if (adminError) throw new HttpError(500, `Database error: ${adminError.message}`)
   if (!admin) throw new HttpError(403, 'This account is not an admin')
   return data.user
 }

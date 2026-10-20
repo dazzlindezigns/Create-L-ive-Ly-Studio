@@ -18,9 +18,18 @@ export async function api(path, { body, auth = false, method } = {}) {
   return data
 }
 
-// Uploads a file through a signed URL. Returns its public URL — or, for the private
-// digital-products bucket, its storage path (there is no public URL by design).
+// Uploads a file. Returns its public URL — or, for the private digital-products bucket,
+// its storage path (there is no public URL by design).
+// Admin uploads (auth: true) go straight to Supabase Storage as the signed-in admin (storage
+// RLS allows it), so adding products doesn't depend on the API. Customer uploads use a signed URL.
 export async function uploadFile(file, bucket = 'order-files', { auth = false } = {}) {
+  if (auth) {
+    const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') : 'bin'
+    const path = `uploads/${Date.now()}-${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type || undefined })
+    if (error) throw new Error(`Upload failed: ${error.message}`)
+    return bucket === 'digital-products' ? path : supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
+  }
   const { path, token, publicUrl } = await api('get-upload-url', { body: { filename: file.name, bucket }, auth })
   const { error } = await supabase.storage.from(bucket).uploadToSignedUrl(path, token, file, { contentType: file.type || undefined })
   if (error) throw new Error(`Upload failed: ${error.message}`)

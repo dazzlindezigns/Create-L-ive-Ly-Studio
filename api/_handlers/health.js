@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
 import { requireMethod } from '../_lib/core.js'
 
 // /api/health — setup check. Says which deploy is live and whether the Supabase keys match
@@ -9,7 +8,7 @@ const refFromUrl = (url) => { try { return new URL(url).hostname.split('.')[0] }
 function describeKey(raw) {
   if (!raw) return { set: false }
   const key = String(raw)
-  const out = { set: true, extraSpacesOrQuotes: key !== key.trim() || /^["']|["']$/.test(key.trim()) }
+  const out = { set: true, extraSpacesOrQuotes: key !== key.trim() || /^["']|["']$/.test(key.trim()), spaceInside: /\s/.test(key.trim()) }
   const k = key.trim().replace(/^["']|["']$/g, '')
   if (k.startsWith('sb_secret_')) return { ...out, type: 'secret key (sb_secret_…)' }
   if (k.startsWith('sb_publishable_')) return { ...out, type: 'publishable key (sb_publishable_…)' }
@@ -17,7 +16,8 @@ function describeKey(raw) {
   if (parts.length === 3) {
     try {
       const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
-      return { ...out, type: `legacy JWT key (role: ${claims.role})`, role: claims.role, project: claims.ref || null }
+      // A legacy key's signature is 43 characters; anything else means it was cut off or extra was pasted.
+      return { ...out, type: `legacy JWT key (role: ${claims.role})`, role: claims.role, project: claims.ref || null, issued: claims.iat || null, signatureOk: parts[2].length === 43 }
     } catch { /* fall through */ }
   }
   return { ...out, type: 'unrecognized — not a Supabase key' }
@@ -48,18 +48,35 @@ export default async function handler(req, res) {
   if (browserKey.role && browserKey.role !== 'anon') problems.push(`VITE_SUPABASE_ANON_KEY is the "${browserKey.role}" key. Use the anon (publishable) key — never the secret one in the browser.`)
   if (browserKey.project && project && browserKey.project !== project) problems.push(`VITE_SUPABASE_ANON_KEY belongs to project "${browserKey.project}" but the URL is project "${project}".`)
 
-  // Real round trip with the server key.
+  if (serverKey.spaceInside) problems.push('SUPABASE_SERVICE_ROLE_KEY has a space or line break inside it — re-copy it as one line.')
+  if (serverKey.signatureOk === false) problems.push('SUPABASE_SERVICE_ROLE_KEY looks cut off or has extra characters at the end — copy it again in full.')
+
+  // Real round trips. Plain REST calls, so Supabase's actual error text comes back.
+  const probe = async (key) => {
+    try {
+      const r = await fetch(`${url.replace(/\/$/, '')}/rest/v1/products?select=id&limit=1`, { headers: { apikey: key, Authorization: `Bearer ${key}` } })
+      if (r.ok) return { ok: true }
+      const body = await r.text()
+      let msg = body
+      try { const j = JSON.parse(body); msg = j.message || j.msg || j.error || body } catch { /* keep text */ }
+      return { ok: false, msg: `${r.status} ${String(msg).slice(0, 200)}`.trim() }
+    } catch (e) { return { ok: false, msg: e.message } }
+  }
   let database = 'not tested'
   if (url && serverKey.set) {
-    try {
-      const client = createClient(url, String(serverKeyRaw).trim(), { auth: { persistSession: false } })
-      const { count, error } = await client.from('products').select('id', { count: 'exact', head: true })
-      database = error ? `error: ${error.message}` : `ok — ${count ?? 0} products`
-      if (error) problems.push(`Supabase query failed: ${error.message}`)
-    } catch (e) {
-      database = `error: ${e.message}`
-      problems.push(`Could not reach Supabase: ${e.message}`)
+    const r = await probe(String(serverKeyRaw).trim().replace(/^["']|["']$/g, ''))
+    database = r.ok ? 'ok — server key accepted' : `error: ${r.msg}`
+    if (!r.ok) {
+      problems.push(`Supabase rejected SUPABASE_SERVICE_ROLE_KEY: ${r.msg}`)
+      if (serverKey.issued && browserKey.issued && serverKey.issued !== browserKey.issued) {
+        problems.push('The service_role key was issued at a different time than the anon key, so it is probably an old copy. Copy it again from Supabase → Project Settings → API Keys.')
+      }
     }
+  }
+  let browserDatabase = 'not tested'
+  if (url && browserKey.set) {
+    const r = await probe(String(process.env.VITE_SUPABASE_ANON_KEY).trim())
+    browserDatabase = r.ok ? 'ok — browser key accepted' : `error: ${r.msg}`
   }
 
   res.setHeader('Cache-Control', 'no-store')
@@ -71,6 +88,7 @@ export default async function handler(req, res) {
     serverKey: { set: serverKey.set, type: serverKey.type, project: serverKey.project },
     browserKey: { set: browserKey.set, type: browserKey.type, project: browserKey.project },
     database,
+    browserDatabase,
     notifications: missingPush.length ? 'not set up' : 'keys set',
     note: 'Changing Vercel environment variables only takes effect after a redeploy. VITE_ variables are built into the site, so they need a redeploy too.',
   })
