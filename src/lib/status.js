@@ -39,7 +39,7 @@ export const FILTER_TABS = [
   { key: 'queue',               label: 'Queue' },
   { key: 'pending',             label: 'New',          badge: true },
   { key: 'quote_sent',          label: 'Quoted' },
-  { key: 'payment_pending',     label: 'Awaiting pay', badge: true },
+  { key: 'payment_pending',     label: 'Unpaid',       badge: true },
   { key: 'revisions_requested', label: 'Changes',      badge: true },
   { key: 'shipped',             label: 'Shipped' },
   { key: 'completed',           label: 'Complete' },

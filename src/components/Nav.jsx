@@ -26,12 +26,12 @@ const LINKS = [
   { path: '/dashboard/calculator', label: 'Calculator', short: 'Quote', Icon: IconCalc },
 ]
 
-// Unread customer replies, kept live for the Inbox badge.
+// Unread customer replies + emails that didn't arrive, kept live for the Inbox badge.
 function useUnread() {
   const [n, setN] = useState(0)
   useEffect(() => {
     const load = () => supabase.from('email_log').select('id', { count: 'exact', head: true })
-      .eq('direction', 'in').is('read_at', null).then(({ count }) => setN(count || 0))
+      .is('read_at', null).or('direction.eq.in,status.in.(bounced,complained,failed)').then(({ count }) => setN(count || 0))
     load()
     const ch = supabase.channel('nav-unread')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'email_log' }, load).subscribe()

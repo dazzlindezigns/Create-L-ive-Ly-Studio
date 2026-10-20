@@ -1,11 +1,14 @@
-// Resend inbound webhook → customer replies land in the app AND in her inbox.
-// In Resend: Webhooks → add https://<domain>/api/resend-webhook for the `email.received` event,
+// Resend webhook:
+//  • email.received → customer replies land in the app AND in her inbox.
+//  • email.bounced / email.complained / email.failed → the email is flagged on its order and in the
+//    Inbox, and she gets a push + email alert, so she knows a customer didn't get it.
+// In Resend: Webhooks → add https://<domain>/api/resend-webhook for those events,
 // and put its signing secret in RESEND_WEBHOOK_SECRET.
 import crypto from 'crypto'
 import { Resend } from 'resend'
 import PostalMime from 'postal-mime'
 import { db, APP_URL, MAKER_EMAIL, firstName } from './_lib/core.js'
-import { sendEmail, REPLY_DOMAIN, esc } from './_lib/email.js'
+import { sendEmail, emailMaker, layout, rows, button, REPLY_DOMAIN, esc } from './_lib/email.js'
 import { notifyAdmins } from './_lib/push.js'
 import { COLORS } from '../src/brand.js'
 
@@ -47,15 +50,59 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Invalid signature' })
   }
 
-  if (event?.type !== 'email.received') return res.status(200).json({ ok: true, ignored: true })
+  const problem = DELIVERY_PROBLEMS[event?.type]
+  if (event?.type !== 'email.received' && !problem) return res.status(200).json({ ok: true, ignored: true })
 
   try {
-    await handleReceived(resend, event.data)
+    if (problem) await handleDeliveryProblem(problem, event.data)
+    else await handleReceived(resend, event.data)
   } catch (e) {
     console.error('resend-webhook error:', e)
     return res.status(500).json({ error: 'Handler failed' }) // Resend retries; the resend_email_id dedupe makes that safe
   }
   return res.status(200).json({ ok: true })
+}
+
+const DELIVERY_PROBLEMS = { 'email.bounced': 'bounced', 'email.complained': 'complained', 'email.failed': 'failed' }
+const PROBLEM_TEXT = { bounced: 'bounced', complained: 'was marked as spam', failed: 'failed to send' }
+
+async function handleDeliveryProblem(status, data) {
+  const supabase = db()
+  const reason = String(data.bounce?.message || data.failed?.reason || data.reason
+    || (status === 'complained' ? 'The recipient marked this email as spam.' : '')).slice(0, 500) || null
+  // Flag the logged email (read_at = null puts it in the Inbox). The status filter makes retries a no-op.
+  const { data: flagged } = await supabase.from('email_log')
+    .update({ status, error: reason, read_at: null })
+    .eq('resend_id', data.email_id).neq('status', status)
+    .select('id, order_id, to_email, subject')
+  const row = flagged?.[0]
+  if (!row && flagged) {
+    // Already flagged (retry), or an email the app didn't log (e.g. alerts to her own inbox).
+    const { data: known } = await supabase.from('email_log').select('id').eq('resend_id', data.email_id).maybeSingle()
+    if (known) return
+  }
+
+  const to = row?.to_email || [].concat(data.to || []).join(', ')
+  const subject = row?.subject || data.subject || 'an email'
+  if (MAKER_EMAIL && addressOf(to) === addressOf(MAKER_EMAIL)) return // her own alert bounced — nothing useful to send
+  const { data: order } = row?.order_id
+    ? await supabase.from('orders').select('id, customer_name, product_type').eq('id', row.order_id).maybeSingle()
+    : { data: null }
+  const link = order ? `/dashboard/order/${order.id}` : '/dashboard/inbox'
+
+  await Promise.all([
+    notifyAdmins({
+      title: `⚠️ Email ${PROBLEM_TEXT[status]}`,
+      body: `${order?.customer_name || to} didn't get “${subject}”. Check the address and resend.`,
+      url: link,
+    }),
+    emailMaker(`⚠️ An email to ${to} ${PROBLEM_TEXT[status]}`, layout({
+      heading: `Email ${PROBLEM_TEXT[status]}`,
+      body: `<p style="margin:0 0 12px;">This email didn't reach your customer. Double-check their address (fix it with “Edit details” on the order) and send it again, or text them.</p>`
+        + rows([['To', esc(to)], ['Subject', esc(subject)], ['Order', esc(order ? `${order.customer_name} — ${order.product_type}` : '—')], ['Reason', esc(reason || '—')]])
+        + button('Open in the app →', `${APP_URL}${link}`),
+    })),
+  ])
 }
 
 async function handleReceived(resend, data) {

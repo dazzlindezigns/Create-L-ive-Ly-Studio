@@ -30,7 +30,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 - `products.stock` (null = untracked) applies to physical units only. `priceCart()` refuses oversells, and `api/stripe-webhook.js` decrements via the `decrement_product_stock` RPC when a shop order is paid in full.
 - **Quote with AI** on a custom request opens `/dashboard/calculator?order=<id>`. `create-invoice` with `orderId` updates that order's quote in place (refused once payments exist). `estimate-from-description` takes `imageUrls` (public `order-files` only) and sends them to Claude as URL images.
 - Admin pages read/write `settings`, `push_subscriptions` and `orders` straight through Supabase (RLS `is_admin()`), so the shop toggle, shop settings, notification sign-up and admin file uploads (`uploadFile(…, { auth: true })` → Storage RLS) keep working even if the API's service key is broken. `/api/health` checks the keys and VAPID setup.
-- Admin menu: Orders, Inbox (`/dashboard/inbox`), Shop, Calculator; notifications/install are small links under Sign out (`AppLinks` in `Nav.jsx`).
+- Admin menu: Orders, Inbox (`/dashboard/inbox`, replies + undelivered emails; badge counts `read_at is null`), Shop, Calculator; notifications/install are small links under Sign out (`AppLinks` in `Nav.jsx`).
 - Stage emails: changing an order's status to in production / ready for pickup / completed / declined offers a one-tap customer email (`send-status-update`, which also sends payment reminders). Quote/invoice/receipt PDFs are the print view of `/quote/:id` (`OrderDocument.jsx`; `?print=1` opens Save-as-PDF).
 - **Affiliate partners** (`PARTNERS` in `src/brand.js`) render as homepage sections. Links use `rel="sponsored"` and must keep the visible commission `disclosure`.
 - **AI listing photos** must start from her real product photo when one exists, and the prompt must keep the product unchanged (only restyle the scene) so listings don't misrepresent what ships.
@@ -42,7 +42,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 | `supabase/migrations/*.sql` | Tables, RLS (`is_admin()`), storage buckets. **Applied by hand** in the Supabase SQL Editor (no GitHub integration connected). `20261019…` and `20261020…` have been run; `20261021000000_stripe_payments.sql` must be run before Stripe goes live; `20261022000000_sticker_bar_sheets.sql` (Sticker Bar columns, settings, six draft sheets) and `20261023000000_admin_storage_uploads.sql` (admin uploads straight to Storage) have been run. |
 | `api/[action].js` | Router for all `/api/*` endpoints |
 | `api/stripe-webhook.js` | Stripe `checkout.session.completed` → marks payments paid (signature-verified) |
-| `api/resend-webhook.js` | Inbound customer replies (Resend `email.received`, signature-verified) → `email_log` (direction `in`) + forward to her inbox |
+| `api/resend-webhook.js` | Resend webhook (signature-verified): `email.received` → customer replies in `email_log` (direction `in`) + forwarded to her inbox; `email.bounced` / `email.complained` / `email.failed` → that `email_log` row gets the status, shows under Inbox → "Didn’t arrive" and on the order, and she gets a push + email |
 | `api/_lib/*` | db/auth, email layout, push, Stripe, Claude client, tracking links, pricing, validation |
 | `src/pages/OrderDetail.jsx` | Admin order page (quote, Quote with AI, payments, proofs, shipping, PO) |
 | `src/lib/cart.js` | Shared cart math: formats, Stack & Save, bulk tiers, codes, free shipping |

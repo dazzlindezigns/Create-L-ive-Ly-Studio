@@ -108,6 +108,80 @@ export default function AdminProducts() {
   )
 }
 
+// Product photos: pick several at once (added in the order picked), first photo is the cover.
+// Tap a photo for Make cover / move / remove (works on phones); drag and drop on a computer.
+function PhotoManager({ urls, update, setUploading, flash }) {
+  const [pending, setPending] = useState([]) // uploads in flight: [{ id, preview }]
+  const [selected, setSelected] = useState(null)
+  const [dragFrom, setDragFrom] = useState(null)
+
+  const move = (from, to) => {
+    if (to < 0 || to >= urls.length || from === to) return
+    update(list => { const next = [...list]; const [u] = next.splice(from, 1); next.splice(to, 0, u); return next })
+    setSelected(to)
+  }
+
+  const onFiles = async (e) => {
+    const files = [...e.target.files]
+    e.target.value = ''
+    if (!files.length) return
+    const batch = files.map(f => ({ id: crypto.randomUUID(), file: f, preview: URL.createObjectURL(f) }))
+    setPending(prev => [...prev, ...batch])
+    setUploading(true)
+    // Upload together, but add them in the order they were picked.
+    const results = await Promise.allSettled(batch.map(b => uploadFile(b.file, 'product-images', { auth: true })))
+    const done = results.filter(r => r.status === 'fulfilled').map(r => r.value)
+    if (done.length) update(list => [...list, ...done])
+    const failed = results.filter(r => r.status === 'rejected')
+    if (failed.length) flash(`${failed.length} photo${failed.length > 1 ? 's' : ''} didn’t upload: ${failed[0].reason.message}`, 'error')
+    batch.forEach(b => URL.revokeObjectURL(b.preview))
+    setPending(prev => {
+      const left = prev.filter(x => !batch.includes(x))
+      if (!left.length) setUploading(false)
+      return left
+    })
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {urls.map((u, i) => (
+          <div key={u} draggable onDragStart={() => setDragFrom(i)} onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); if (dragFrom != null) move(dragFrom, i); setDragFrom(null) }}
+            onClick={() => setSelected(selected === i ? null : i)}
+            style={{ ...styles.photo, outline: selected === i ? '3px solid var(--primary)' : 'none', opacity: dragFrom === i ? 0.4 : 1 }}>
+            <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+            {i === 0 && <span style={styles.cover}>Cover</span>}
+            <span style={styles.photoNum}>{i + 1}</span>
+          </div>
+        ))}
+        {pending.map(x => (
+          <div key={x.id} style={{ ...styles.photo, opacity: 0.5 }}>
+            <img src={x.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <span style={{ ...styles.cover, background: 'var(--dark)' }}>Uploading…</span>
+          </div>
+        ))}
+        <label style={{ ...styles.photo, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: '2px dashed var(--border)', color: 'var(--muted)', fontSize: 12, fontWeight: 600, gap: 2 }}>
+          <input type="file" accept="image/*" multiple onChange={onFiles} style={{ display: 'none' }} />
+          <span style={{ fontSize: 22 }}>+</span>Add photos
+        </label>
+      </div>
+      {selected != null && urls[selected] && (
+        <div style={styles.photoBar}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>Photo {selected + 1}</span>
+          {selected > 0 && <Button small onClick={() => move(selected, 0)}>★ Make cover</Button>}
+          <Button small variant="ghost" disabled={selected === 0} onClick={() => move(selected, selected - 1)}>◀</Button>
+          <Button small variant="ghost" disabled={selected === urls.length - 1} onClick={() => move(selected, selected + 1)}>▶</Button>
+          <Button small variant="ghost" onClick={() => { update(list => list.filter((_, j) => j !== selected)); setSelected(null) }}>Remove</Button>
+        </div>
+      )}
+      <div style={{ ...ui.hint, marginTop: 6 }}>
+        Pick several at once — they’re added in the order you pick them. The first photo is the cover in the shop. Tap a photo to move it or make it the cover{typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches ? ', or drag to reorder' : ''}.
+      </div>
+    </div>
+  )
+}
+
 // One compact list row: photo, name, price, then status chips on their own line so nothing gets squeezed.
 function ProductRow({ p, onClick }) {
   const both = p.kind !== 'digital' && p.digital_price != null
@@ -188,18 +262,6 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
   const hasFile = isDigital || p.sell_digital // a download file is part of this listing
   const set = (k) => (e) => setP(prev => ({ ...prev, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
-  const onFiles = async (e) => {
-    const files = [...e.target.files]
-    e.target.value = ''
-    setUploading(true)
-    try {
-      for (const f of files) {
-        const url = await uploadFile(f, 'product-images', { auth: true })
-        setP(prev => ({ ...prev, image_urls: [...(prev.image_urls || []), url] }))
-      }
-    } catch (err) { flash(err.message, 'error') } finally { setUploading(false) }
-  }
-
   // Digital files go to the PRIVATE digital-products bucket; we store only the path.
   const onDigitalFile = async (e) => {
     const file = e.target.files[0]
@@ -256,18 +318,8 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
         </div>
         <div>
           <div style={ui.label}>{isDigital ? 'Preview images' : 'Photos'}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {(p.image_urls || []).map(u => (
-              <div key={u} style={{ position: 'relative' }}>
-                <img src={u} alt="" style={styles.thumb} />
-                <button onClick={() => setP(prev => ({ ...prev, image_urls: prev.image_urls.filter(x => x !== u) }))} style={styles.x}>×</button>
-              </div>
-            ))}
-            <label style={{ ...styles.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: '2px dashed var(--border)', fontSize: 22, color: 'var(--muted)' }}>
-              <input type="file" accept="image/*" multiple onChange={onFiles} style={{ display: 'none' }} />
-              {uploading ? '…' : '+'}
-            </label>
-          </div>
+          <PhotoManager urls={p.image_urls || []} setUploading={setUploading} flash={flash}
+            update={fn => setP(prev => ({ ...prev, image_urls: fn(prev.image_urls || []) }))} />
         </div>
         <ImageStudio p={p} setP={setP} flash={flash} />
         <ListingAssistant p={p} setP={setP} flash={flash} />
@@ -508,6 +560,10 @@ function DiscountCodes({ codes, reload, flash }) {
 }
 
 const styles = {
+  photo: { position: 'relative', width: 84, height: 84, borderRadius: 12, overflow: 'hidden', background: 'var(--card2)', cursor: 'pointer', flexShrink: 0 },
+  cover: { position: 'absolute', left: 4, bottom: 4, background: 'var(--primary)', color: '#fff', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', borderRadius: 6, padding: '2px 6px' },
+  photoNum: { position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 10, minWidth: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' },
+  photoBar: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8, padding: '8px 10px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)' },
   groupHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, margin: '4px 2px 8px' },
   count: { fontFamily: "'Montserrat', Arial, sans-serif", fontSize: 12, fontWeight: 700, color: 'var(--muted)', background: 'var(--card2)', borderRadius: 10, padding: '2px 8px', verticalAlign: 'middle' },
   groupAdd: { background: 'none', border: 'none', fontSize: 13, fontWeight: 700, color: 'var(--secondary)', cursor: 'pointer', padding: 4 },

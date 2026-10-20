@@ -10,6 +10,9 @@ const KIND_LABELS = {
   in_production: 'In production', ready_for_pickup: 'Ready for pickup', completed: 'Thank you', declined: 'Declined', payment_reminder: 'Payment reminder',
 }
 
+// Emails that didn't reach the customer (Resend webhook or a failed send).
+const PROBLEMS = { bounced: 'Bounced', complained: 'Marked as spam', failed: 'Failed' }
+
 const fillTemplate = (text, order) => text
   .replaceAll('{firstName}', (order.customer_name || '').split(' ')[0] || 'there')
   .replaceAll('{product}', order.product_type || 'custom')
@@ -40,10 +43,10 @@ export default function EmailPanel({ order, flash }) {
   const load = useCallback(async () => {
     const { data } = await supabase.from('email_log').select('*').eq('order_id', order.id).order('created_at', { ascending: false })
     setLog(data || [])
-    // Opening the order counts as reading its customer replies (clears the dashboard Inbox badge).
-    if ((data || []).some(e => e.direction === 'in' && !e.read_at)) {
+    // Opening the order counts as reading its customer replies and delivery problems (clears the Inbox badge).
+    if ((data || []).some(e => !e.read_at && (e.direction === 'in' || PROBLEMS[e.status]))) {
       await supabase.from('email_log').update({ read_at: new Date().toISOString() })
-        .eq('order_id', order.id).eq('direction', 'in').is('read_at', null)
+        .eq('order_id', order.id).is('read_at', null).or('direction.eq.in,status.in.(bounced,complained,failed)')
     }
   }, [order.id])
   // Re-fetch when the order changes (e.g. a quote or proof email was just sent) without losing a draft.
@@ -129,15 +132,15 @@ export default function EmailPanel({ order, flash }) {
                     {new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: BRAND.timezone })}
                   </div>
                 </div>
-                {e.status === 'failed'
-                  ? <Badge color="var(--danger)" bg="rgba(200,65,75,0.1)">Failed</Badge>
+                {PROBLEMS[e.status]
+                  ? <Badge color="var(--danger)" bg="rgba(200,65,75,0.1)">⚠ {PROBLEMS[e.status]}</Badge>
                   : e.direction === 'in'
                   ? <Badge color="#fff" bg="var(--primary)">{KIND_LABELS.reply}</Badge>
                   : <Badge color={e.kind === 'manual' ? 'var(--primary)' : 'var(--muted)'} bg="var(--card2)">{KIND_LABELS[e.kind] || e.kind}</Badge>}
               </button>
               {open === e.id && (
                 <div style={styles.body}>
-                  {e.status === 'failed' ? `Error: ${e.error}` : e.body_text || (e.direction === 'in' ? '(no text — see attachments)' : '')}
+                  {PROBLEMS[e.status] ? `${PROBLEMS[e.status]} — this email didn't reach ${order.customer_email}. ${e.error || ''}\nCheck the address (Edit details), then send it again.` : e.body_text || (e.direction === 'in' ? '(no text — see attachments)' : '')}
                   {e.attachment_urls?.length > 0 && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
                       {e.attachment_urls.map(u => (
