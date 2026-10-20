@@ -479,7 +479,10 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
           {files.length > 0 && <div style={ui.hint}>{files.map(x => `${x.name}${x.url ? ' ✓' : '…'}`).join(' · ')}</div>}
           {totals}
           {error && <div style={ui.error}>{error}</div>}
-          <Button type="submit" block loading={busy} disabled={uploading}>Pay {fmt(total)} securely →</Button>
+          {total > 0 && total < 0.5 && <div style={ui.error}>Card payments must be at least $0.50 — add another item or use a different code.</div>}
+          <Button type="submit" block loading={busy} disabled={uploading || (total > 0 && total < 0.5)}>
+            {total === 0 ? 'Place free order →' : `Pay ${fmt(total)} securely →`}
+          </Button>
           <Button type="button" variant="ghost" block onClick={() => setStep('cart')}>← Back to cart</Button>
         </form>
       )}

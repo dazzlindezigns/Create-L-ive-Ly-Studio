@@ -69,7 +69,7 @@ export default function QuoteReview() {
           <div style={{ fontSize: 34 }}>🎉</div>
           <div style={{ fontWeight: 800, fontSize: 18 }}>Thank you, {firstName}!</div>
           <div style={{ ...ui.muted, marginTop: 4 }}>
-            {waiting ? 'Confirming your payment…' : 'Your payment was received. A receipt is on its way to your email.'}
+            {waiting ? 'Confirming your payment…' : Number(order.price) === 0 ? 'Your order is confirmed — check your email.' : 'Your payment was received. A receipt is on its way to your email.'}
           </div>
           <button onClick={() => setParams({})} style={{ marginTop: 8, background: 'none', border: 'none', color: 'var(--secondary)', fontWeight: 600, cursor: 'pointer' }}>Dismiss</button>
         </div>
@@ -133,7 +133,7 @@ export default function QuoteReview() {
         </div>
       )}
 
-      {(order.shop_cart || []).some(l => l.kind === 'digital') && remaining === 0 && Number(order.price) > 0 && !waiting && (
+      {(order.shop_cart || []).some(l => l.kind === 'digital') && remaining === 0 && (Number(order.price) > 0 || order.balance_paid) && !waiting && (
         <Link to={`/downloads/${order.id}`} style={{ textDecoration: 'none' }}>
           <Button block variant="gradient">⬇️ Get your downloads</Button>
         </Link>

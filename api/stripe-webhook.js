@@ -7,6 +7,7 @@ import { notifyAdmins } from './_lib/push.js'
 import { layout, rows, panel, button, emailMaker, sendEmail, esc } from './_lib/email.js'
 import { digitalLines, hasPhysicalLines, sendDownloadEmail } from './_lib/downloads.js'
 import { fmt, round2 } from '../src/lib/money.js'
+import { takeFromStock } from './_lib/pricing.js'
 
 export const config = { api: { bodyParser: false } }
 
@@ -77,12 +78,7 @@ async function handleCompleted(session) {
   await supabase.from('orders').update(updates).eq('id', order.id)
 
   // Shop orders take physical sheets/items out of stock once they're paid for.
-  if (fullyPaid && !order.balance_paid && order.source === 'shop') {
-    for (const l of (order.shop_cart || []).filter(l => l.kind === 'physical' && l.productId)) {
-      const { error } = await supabase.rpc('decrement_product_stock', { p_id: l.productId, p_qty: l.quantity })
-      if (error) console.error('stock update failed', l.productId, error.message)
-    }
-  }
+  if (fullyPaid && !order.balance_paid && order.source === 'shop') await takeFromStock(order)
 
   const label = { deposit: 'Deposit', balance: 'Balance', full: 'Payment' }[row.kind] || 'Payment'
   const remaining = Math.max(0, round2(order.price - amountPaid))

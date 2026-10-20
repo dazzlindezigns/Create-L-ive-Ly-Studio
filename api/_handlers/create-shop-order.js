@@ -1,5 +1,7 @@
 import { db, requireMethod, HttpError, isEmail, firstName, APP_URL, BRAND } from '../_lib/core.js'
-import { priceCart } from '../_lib/pricing.js'
+import { priceCart, takeFromStock } from '../_lib/pricing.js'
+import { sendDownloadEmail } from '../_lib/downloads.js'
+import { layout, rows, button, sendEmail, emailMaker, esc } from '../_lib/email.js'
 import { createCheckoutSession } from '../_lib/stripe.js'
 import { notifyAdmins } from '../_lib/push.js'
 import { storageUrlsOnly, cleanAddress } from '../_lib/validate.js'
@@ -41,6 +43,9 @@ export default async function handler(req, res) {
   if (cart.shipping) lines.push(`Shipping ${fmt(cart.shipping)}`)
   if (cart.freeShipping) lines.push('Free shipping')
 
+  // Stripe can't charge under $0.50. A $0 order (e.g. a 100% code) is completed below without Stripe.
+  if (cart.total > 0 && cart.total < 0.5) throw new HttpError(400, 'Card payments must be at least $0.50 — add another item or use a different code.')
+
   const productType = cart.lines.length === 1 ? cart.lines[0].productName : `Shop order (${cart.lines.length} items)`
   const notes = String(b.notes || '').trim().slice(0, 2000)
 
@@ -72,6 +77,8 @@ export default async function handler(req, res) {
   }).select().single()
   if (error) throw new HttpError(500, error.message)
 
+  if (cart.total === 0) return res.status(200).json(await completeFreeOrder({ supabase, order, cart, productType, customerName, hasPhysical }))
+
   const url = await createCheckoutSession({
     orderId: order.id,
     kind: 'full',
@@ -95,4 +102,40 @@ export default async function handler(req, res) {
   })
 
   return res.status(200).json({ orderId: order.id, url })
+}
+
+// $0 orders skip Stripe: mark paid, unlock downloads, take stock, and tell everyone.
+async function completeFreeOrder({ supabase, order, cart, productType, customerName, hasPhysical }) {
+  const now = new Date().toISOString()
+  const paid = { status: hasPhysical ? 'confirmed' : 'completed', balance_paid: true, deposit_paid: true, deposit_paid_at: now, paid_at: now, amount_paid: 0 }
+  const { error } = await supabase.from('orders').update(paid).eq('id', order.id)
+  if (error) throw new HttpError(500, error.message)
+  const done = { ...order, ...paid }
+
+  if (cart.discount) {
+    try { await supabase.rpc('increment_discount_uses', { code_id: cart.discount.id }) } catch {}
+  }
+  await takeFromStock(done)
+
+  const hasDigital = cart.lines.some(l => l.kind === 'digital')
+  await Promise.all([
+    hasDigital ? sendDownloadEmail(done).catch(e => console.error('download email failed', e)) : null,
+    hasPhysical ? sendEmail({
+      to: done.customer_email,
+      log: { orderId: done.id, kind: 'receipt' },
+      subject: `Your order is confirmed, ${firstName(customerName)}!`,
+      html: layout({
+        heading: 'Order confirmed!',
+        body: `<p style="margin:0;">Thank you! Your <strong>${esc(productType)}</strong> order is confirmed${cart.discount ? ` with code ${esc(cart.discount.code)}` : ''} — nothing to pay. We'll let you know when it's ready.</p>
+          ${button('View your order', `${APP_URL}/quote/${done.id}`)}`,
+      }),
+    }).catch(e => console.error('confirmation email failed', e)) : null,
+    emailMaker(`🎁 Free shop order — ${customerName}`, layout({
+      heading: 'Free shop order',
+      body: rows([['Customer', esc(customerName)], ['Order', esc(productType)], ['Code', esc(cart.discount?.code || '—')], ['Total', fmt(0)]])
+        + button('Open order →', `${APP_URL}/dashboard/order/${done.id}`),
+    })).catch(e => console.error('maker email failed', e)),
+    notifyAdmins({ title: '🎁 Free shop order', body: `${firstName(customerName)} got ${productType}${cart.discount ? ` with ${cart.discount.code}` : ''}`, url: `/dashboard/order/${done.id}` }),
+  ])
+  return { orderId: done.id, url: `${APP_URL}/quote/${done.id}?paid=1` }
 }

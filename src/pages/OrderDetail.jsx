@@ -194,7 +194,8 @@ export default function OrderDetail() {
 function DigitalSection({ order, flash, onCopy }) {
   const [sending, setSending] = useState(false)
   const items = order.shop_cart.filter(l => l.kind === 'digital')
-  const paidInFull = Number(order.price) > 0 && Number(order.amount_paid) >= Number(order.price) - 0.009
+  // Same rule as isPaidInFull() in api/_lib/downloads.js (balance_paid covers free $0 orders).
+  const paidInFull = Boolean(order.balance_paid) || (Number(order.price) > 0 && Number(order.amount_paid) >= Number(order.price) - 0.009)
   const resend = async () => {
     setSending(true)
     try { await api('send-downloads', { body: { orderId: order.id }, auth: true }); flash('Download email sent ✉️') }

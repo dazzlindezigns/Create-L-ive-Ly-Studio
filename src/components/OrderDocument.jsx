@@ -5,7 +5,7 @@ import { fmt, paymentOptions } from '../lib/money'
 // "Save as PDF" turns it into the PDF customers and the studio download.
 export default function OrderDocument({ order }) {
   const { paid, remaining, deposit } = paymentOptions(order)
-  const kind = Number(order.price) > 0 && remaining <= 0 ? 'Receipt' : order.source === 'form' ? 'Quote' : 'Invoice'
+  const kind = (Number(order.price) > 0 || order.balance_paid) && remaining <= 0 ? 'Receipt' : order.source === 'form' ? 'Quote' : 'Invoice'
   const lines = order.quote_breakdown?.lines?.length
     ? order.quote_breakdown.lines
     : [{ description: order.product_type, qty: order.quantity || 1, unitPrice: Number(order.price || 0) / (order.quantity || 1) }]

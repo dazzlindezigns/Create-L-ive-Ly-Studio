@@ -77,3 +77,11 @@ export async function priceCart(items, code, opts = {}) {
   })
   return { lines, discount, ...totals }
 }
+
+// Takes paid shop items out of stock (physical lines only; untracked products are skipped by the RPC).
+export async function takeFromStock(order) {
+  for (const l of (order.shop_cart || []).filter(l => l.kind === 'physical' && l.productId)) {
+    const { error } = await db().rpc('decrement_product_stock', { p_id: l.productId, p_qty: l.quantity })
+    if (error) console.error('stock update failed', l.productId, error.message)
+  }
+}
