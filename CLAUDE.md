@@ -39,7 +39,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 ## Key files
 | Path | Purpose |
 |------|---------|
-| `supabase/migrations/*.sql` | Tables, RLS (`is_admin()`), storage buckets. **Applied by hand** in the Supabase SQL Editor (no GitHub integration connected). `20261019…` and `20261020…` have been run; `20261021000000_stripe_payments.sql` must be run before Stripe goes live; `20261022000000_sticker_bar_sheets.sql` adds the Sticker Bar product columns, settings and her six draft sheets; `20261023000000_admin_storage_uploads.sql` lets admins upload straight to Storage. |
+| `supabase/migrations/*.sql` | Tables, RLS (`is_admin()`), storage buckets. **Applied by hand** in the Supabase SQL Editor (no GitHub integration connected). `20261019…` and `20261020…` have been run; `20261021000000_stripe_payments.sql` must be run before Stripe goes live; `20261022000000_sticker_bar_sheets.sql` (Sticker Bar columns, settings, six draft sheets) and `20261023000000_admin_storage_uploads.sql` (admin uploads straight to Storage) have been run. |
 | `api/[action].js` | Router for all `/api/*` endpoints |
 | `api/stripe-webhook.js` | Stripe `checkout.session.completed` → marks payments paid (signature-verified) |
 | `api/resend-webhook.js` | Inbound customer replies (Resend `email.received`, signature-verified) → `email_log` (direction `in`) + forward to her inbox |
