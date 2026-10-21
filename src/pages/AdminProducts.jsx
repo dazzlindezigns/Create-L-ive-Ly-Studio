@@ -342,7 +342,18 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
       image_urls: p.image_urls || [], bulk_pricing_enabled: p.bulk_pricing_enabled, active: p.active,
       sort_order: parseInt(p.sort_order, 10) || 0,
     }
-    const { error } = p.id ? await supabase.from('products').update(row).eq('id', p.id) : await supabase.from('products').insert(row)
+    const write = (r) => p.id ? supabase.from('products').update(r).eq('id', p.id) : supabase.from('products').insert(r)
+    let { error } = await write(row)
+    // Database not updated for options yet (20261024000000_product_option_groups.sql): products
+    // without options still save; with options, say exactly what to run.
+    if (error && /option_groups/.test(error.message)) {
+      if (row.option_groups.length) {
+        setBusy(false)
+        return flash('Options need a quick database update first: run 20261024000000_product_option_groups.sql in Supabase → SQL Editor.', 'error')
+      }
+      const { option_groups: _skip, ...rest } = row // eslint-disable-line no-unused-vars
+      ;({ error } = await write(rest))
+    }
     setBusy(false)
     if (error) return flash(error.message, 'error')
     onSaved(p.id ? 'Product updated' : 'Product added')
