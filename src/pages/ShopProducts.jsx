@@ -3,18 +3,18 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api, uploadFile } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { BRAND, COLLECTIONS, STICKER_BAR } from '../brand'
-import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker } from '../lib/cart'
+import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions } from '../lib/cart'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 
-const CART_KEY = 'shop-cart-v2'
+const CART_KEY = 'shop-cart-v3'
 const loadCart = () => { try { return JSON.parse(localStorage.getItem(CART_KEY)) || [] } catch { return [] } }
 
 export default function ShopProducts() {
   const [params, setParams] = useSearchParams()
   const [products, setProducts] = useState(null)
   const [settings, setSettings] = useState({})
-  const [cart, setCart] = useState(loadCart) // [{ key, productId, option, quantity, format }]
+  const [cart, setCart] = useState(loadCart) // [{ key, productId, selections, quantity, format }]
   const [cartOpen, setCartOpen] = useState(false)
   useEffect(() => {
     // If products can't load, customers still get the designed shop with "coming soon" collections.
@@ -32,8 +32,10 @@ export default function ShopProducts() {
     const product = byId[c.productId]
     const format = lineFormat(product, c.format)
     const quantity = format === 'digital' ? 1 : c.quantity
-    const unit = unitPrice(product, format)
-    return { ...c, format, quantity, product, unit, total: round2(unit * quantity) }
+    // Mirrors priceCart(): physical lines add the price changes of the chosen options.
+    const opts = format === 'digital' ? null : resolveOptions(product, c.selections)
+    const unit = round2(unitPrice(product, format) + (opts?.extra || 0))
+    return { ...c, format, quantity, product, unit, optionText: opts?.text, total: round2(unit * quantity) }
   })
   const stackTiers = tiersFromSettings(settings)
   const stackCount = lines.filter(l => l.product.bulk_pricing_enabled !== false).reduce((s, l) => s + l.quantity, 0)
@@ -76,13 +78,14 @@ export default function ShopProducts() {
     if (window.scrollY > top + 40) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 
-  const add = (product, option, quantity, format) => {
+  const add = (product, selections, quantity, format) => {
     const digital = format === 'digital'
-    const key = `${product.id}|${digital ? '' : option || ''}|${format}`
+    const picks = digital ? null : selections
+    const key = `${product.id}|${picks ? JSON.stringify(picks) : ''}|${format}`
     // Digital items are one copy per order — adding again doesn't stack.
     setCart(prev => prev.some(c => c.key === key)
       ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity } : c)
-      : [...prev, { key, productId: product.id, option: digital ? null : option, quantity: digital ? 1 : quantity, format }])
+      : [...prev, { key, productId: product.id, selections: picks, quantity: digital ? 1 : quantity, format }])
     setParam('p', null)
     setCartOpen(true)
   }
@@ -226,12 +229,14 @@ function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAd
   const both = offersPhysical(product) && offersDigital(product)
   const soldOut = product.kind !== 'digital' && product.stock != null && product.stock <= 0
   const [format, setFormat] = useState(product.kind === 'digital' || (both && soldOut) ? 'digital' : 'physical')
-  const [option, setOption] = useState(product.options?.[0] || null)
+  const groups = optionGroups(product)
+  const [picks, setPicks] = useState(() => resolveOptions(product).selections || {})
   const [qty, setQty] = useState(1)
   const [imgIdx, setImgIdx] = useState(0)
   const isDigital = format === 'digital'
   const sticker = isSticker(product)
-  const price = unitPrice(product, format)
+  const opts = isDigital ? null : resolveOptions(product, picks)
+  const price = round2(unitPrice(product, format) + (opts?.extra || 0))
   const maxQty = product.stock != null ? Math.max(0, product.stock) : 10000
   const unavailable = !isDigital && soldOut
   const nextStack = tierFor(stackTiers, stackCount + (isDigital ? 1 : qty))
@@ -260,7 +265,7 @@ function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAd
           <div style={styles.formats}>
             {[
               ['digital', '⬇️', 'Digital', product.digital_price, 'Instant download'],
-              ['physical', '📦', sticker ? 'Vinyl sheet' : 'Physical', product.price, soldOut ? 'Sold out' : 'Shipped or picked up'],
+              ['physical', '📦', sticker ? 'Vinyl' : 'Physical', product.price, soldOut ? 'Sold out' : 'Shipped or picked up'],
             ].map(([k, icon, label, amount, sub]) => (
               <button key={k} type="button" onClick={() => setFormat(k)} disabled={k === 'physical' && soldOut}
                 style={{ ...styles.formatBtn, ...(format === k ? styles.formatOn : {}), ...(k === 'physical' && soldOut ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
@@ -283,10 +288,23 @@ function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAd
       ) : (
       <>
       {both && <div style={{ ...ui.hint, marginTop: 8 }}>{sticker ? 'Premium waterproof vinyl, packed flat so nothing bends.' : 'A finished piece, made and packed by hand.'}{shipNote}</div>}
+      {groups.map(g => (
+        <div key={g.name} style={{ marginTop: 14 }}>
+          <div style={ui.label}>{g.name}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {g.choices.map(c => {
+              const on = picks[g.name] === c.label
+              return (
+                <button key={c.label} type="button" onClick={() => setPicks(prev => ({ ...prev, [g.name]: c.label }))}
+                  style={{ ...styles.choice, ...(on ? styles.choiceOn : {}) }} aria-pressed={on}>
+                  {c.label}{c.price !== 0 && <span style={{ opacity: 0.8, fontWeight: 600 }}> {c.price > 0 ? '+' : '−'}{fmt(Math.abs(c.price))}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
       <div style={{ ...ui.row, marginTop: 14 }}>
-        {product.options?.length > 0 && (
-          <Field label="Option"><Select value={option} onChange={e => setOption(e.target.value)} options={product.options} /></Field>
-        )}
         <Field label="Quantity" hint={product.stock != null && product.stock > 0 && product.stock <= 10 ? `Only ${product.stock} left` : null}>
           <Input type="number" min={1} max={maxQty} value={qty} onChange={e => setQty(Math.max(1, Math.min(maxQty || 1, parseInt(e.target.value, 10) || 1)))} />
         </Field>
@@ -307,7 +325,7 @@ function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAd
           <div style={{ ...ui.hint, padding: '6px 12px' }}>Stack & Save: mix any products and formats — the discount applies automatically.</div>
         </div>
       )}
-      <Button block disabled={disabled || unavailable} onClick={() => onAdd(product, option, qty, format)} style={{ marginTop: 14 }}>
+      <Button block disabled={disabled || unavailable} onClick={() => onAdd(product, opts?.selections || null, qty, format)} style={{ marginTop: 14 }}>
         {disabled ? 'Shop is closed' : unavailable ? 'Sold out' : `Add to cart · ${fmt(price * (isDigital ? 1 : qty))}`}
       </Button>
     </Modal>
@@ -374,7 +392,7 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
     try {
       const { url } = await api('create-shop-order', {
         body: {
-          items: lines.map(l => ({ productId: l.productId, option: l.option, quantity: l.quantity, format: l.format })),
+          items: lines.map(l => ({ productId: l.productId, selections: l.selections, quantity: l.quantity, format: l.format })),
           discountCode: discount?.code || null,
           customerName: f.name, customerEmail: f.email, customerPhone: f.phone, notes: f.notes,
           fulfillment: hasPhysical ? f.fulfillment : 'digital',
@@ -408,7 +426,7 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
             <div key={l.key} style={styles.cartLine}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{l.product.name}</div>
-                <div style={ui.muted}>{l.format === 'digital' ? 'Digital download' : `${isSticker(l.product) && offersDigital(l.product) ? 'Vinyl sheet · ' : ''}${l.option ? `${l.option} · ` : ''}${fmt(l.unit)} each`}</div>
+                <div style={ui.muted}>{l.format === 'digital' ? 'Digital download' : `${isSticker(l.product) && offersDigital(l.product) ? 'Vinyl · ' : ''}${l.optionText ? `${l.optionText} · ` : ''}${fmt(l.unit)} each`}</div>
               </div>
               {l.format === 'digital' ? (
                 <button onClick={() => setQty(l.key, 0)} style={{ ...styles.qtyBtn, width: 'auto', padding: '0 10px', fontSize: 12, fontWeight: 600 }}>Remove</button>
@@ -517,6 +535,8 @@ const styles = {
   digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--primary)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
   ctaPink: { display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, var(--accent), var(--primary))', color: '#fff', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', textDecoration: 'none' },
   ctaGhost: { font: 'inherit', display: 'inline-flex', alignItems: 'center', background: '#fff', color: 'var(--dark)', border: '1px solid var(--border)', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer' },
+  choice: { font: 'inherit', padding: '9px 14px', borderRadius: 12, border: '1.5px solid var(--border)', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
+  choiceOn: { borderColor: 'var(--primary)', background: 'var(--card2)', color: 'var(--dark)', boxShadow: '0 0 0 1px var(--primary) inset' },
   addCode: { background: 'none', border: 'none', padding: '12px 0 0', fontSize: 13, fontWeight: 600, color: 'var(--secondary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 },
   series: { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 2 },
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },

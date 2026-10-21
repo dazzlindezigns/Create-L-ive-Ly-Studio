@@ -3,16 +3,26 @@ import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE } from '../brand'
-import { normalizeTiers, tiersFromSettings } from '../lib/cart'
+import { normalizeTiers, tiersFromSettings, optionGroups } from '../lib/cart'
 import Nav from '../components/Nav'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash } from '../components/ui'
 
-const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', options: '', image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
+// Option presets. Prices are the change from the base price (0 = same price).
+const choice = (label, price = 0) => ({ label, price })
+const STICKER_STYLE = () => ({ name: 'Style', choices: [choice('Sticker sheet'), choice('Die-cut stickers')] })
+const OPTION_PRESETS = [
+  ['Size', () => ({ name: 'Size', choices: [choice('Small'), choice('Medium'), choice('Large')] })],
+  ['Color', () => ({ name: 'Color', choices: [choice('Blush'), choice('Gold'), choice('White')] })],
+  ['Sticker style', STICKER_STYLE],
+  ['Custom', () => ({ name: '', choices: [choice('')] })],
+]
+
+const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', option_groups: [], image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
 const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', bulk_pricing_enabled: false }
 // Sticker Bar sheet: one listing, sold as vinyl AND as a download (prices from her mockups).
-const BLANK_SHEET = { ...BLANK, collection: STICKER_BAR.collection, price: 6.5, digital_price: 4, sell_digital: true, description: 'A sheet of 12 premium waterproof vinyl stickers. Perfect for planners, journals, laptops and water bottles.' }
+const BLANK_SHEET = { ...BLANK, collection: STICKER_BAR.collection, price: 6.5, digital_price: 4, sell_digital: true, option_groups: [STICKER_STYLE()], description: 'A sheet of 12 premium waterproof vinyl stickers. Perfect for planners, journals, laptops and water bottles.' }
 const LOW_STOCK = 5
-const toForm = (p) => ({ ...p, options: (p.options || []).join(', '), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
+const toForm = (p) => ({ ...p, option_groups: optionGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
 export default function AdminProducts() {
@@ -104,6 +114,42 @@ export default function AdminProducts() {
       {editing && <ProductModal product={editing} seriesList={[...new Set(products.map(x => x.series).filter(Boolean))]} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
       {toast}
       <Nav />
+    </div>
+  )
+}
+
+// Option groups (Size, Color, Sticker style…). Customers pick one choice per group on the
+// product page; a choice's price is added to (or taken off) the base price.
+function OptionGroupsEditor({ groups, onChange }) {
+  const setGroup = (i, patch) => onChange(groups.map((g, j) => j === i ? { ...g, ...patch } : g))
+  const setChoice = (i, k, patch) => setGroup(i, { choices: groups[i].choices.map((c, j) => j === k ? { ...c, ...patch } : c) })
+  return (
+    <div>
+      <div style={ui.label}>Options</div>
+      {groups.length === 0 && <div style={{ ...ui.hint, marginBottom: 8 }}>No options — customers just pick a quantity. Add sizes, colors, or sticker style below.</div>}
+      {groups.map((g, i) => (
+        <div key={i} style={styles.optGroup}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Input value={g.name} placeholder="Option name (e.g. Size)" onChange={e => setGroup(i, { name: e.target.value })} style={{ fontWeight: 700 }} />
+            <button type="button" onClick={() => onChange(groups.filter((_, j) => j !== i))} style={styles.optRemove}>Remove</button>
+          </div>
+          {g.choices.map((c, k) => (
+            <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+              <Input value={c.label} placeholder="Choice" onChange={e => setChoice(i, k, { label: e.target.value })} style={{ flex: 2, padding: '9px 10px', fontSize: 14 }} />
+              <Input type="number" step="0.01" value={c.price === 0 ? '' : c.price} placeholder="+$0" title="Price change from the base price"
+                onChange={e => setChoice(i, k, { price: e.target.value === '' ? 0 : Number(e.target.value) })} style={{ flex: 1, minWidth: 70, padding: '9px 10px', fontSize: 14 }} />
+              <button type="button" onClick={() => setGroup(i, { choices: g.choices.filter((_, j) => j !== k) })} style={{ ...styles.x, position: 'static', flexShrink: 0 }} aria-label="Remove choice">×</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setGroup(i, { choices: [...g.choices, choice('')] })} style={styles.optAdd}>+ Add choice</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+        {OPTION_PRESETS.filter(([label]) => !groups.some(g => g.name === label || (label === 'Sticker style' && g.name === 'Style'))).map(([label, make]) => (
+          <button key={label} type="button" onClick={() => onChange([...groups, make()])} style={styles.chip}>+ {label}</button>
+        ))}
+      </div>
+      <div style={{ ...ui.hint, marginTop: 6 }}>The first choice is selected by default. Leave the $ box empty when a choice costs the same; enter 1.50 to add $1.50 or −1 to take $1 off.</div>
     </div>
   )
 }
@@ -290,7 +336,9 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
       digital_price: !isDigital && p.sell_digital ? round2(p.digital_price) : null,
       stock: !isDigital && String(p.stock).trim() !== '' ? Math.max(0, parseInt(p.stock, 10) || 0) : null,
       name: p.name.trim(), description: p.description?.trim() || null, price: round2(p.price),
-      options: isDigital ? [] : String(p.options || '').split(',').map(s => s.trim()).filter(Boolean),
+      // Options live in option_groups now; the old flat list is cleared once a product is saved.
+      option_groups: isDigital ? [] : optionGroups({ option_groups: p.option_groups }),
+      options: [],
       image_urls: p.image_urls || [], bulk_pricing_enabled: p.bulk_pricing_enabled, active: p.active,
       sort_order: parseInt(p.sort_order, 10) || 0,
     }
@@ -368,11 +416,9 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
           </div>
         )}
         {!isDigital && (
-          <Field label="Options (comma separated)" hint='e.g. Matte, Glossy, Holographic — leave blank for none'>
-            <Input value={p.options} onChange={set('options')} />
-          </Field>
+          <OptionGroupsEditor groups={p.option_groups || []} onChange={groups => setP(prev => ({ ...prev, option_groups: groups }))} />
         )}
-        <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> {p.collection === STICKER_BAR.collection ? 'Counts toward Stack & Save' : 'Counts toward bulk discounts'}</label>
+        <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> Counts toward Stack & Save</label>
         <label style={styles.check}><input type="checkbox" checked={p.active} onChange={set('active')} /> Visible in shop</label>
         <Button block loading={busy} disabled={uploading || fileUploading} onClick={save}>Save product</Button>
         {p.id && <Button block variant="danger" onClick={remove}>Delete product</Button>}
@@ -398,7 +444,8 @@ function ListingAssistant({ p, setP, flash }) {
         ...prev,
         name: r.title || prev.name,
         description: r.description || prev.description,
-        ...(prev.kind !== 'digital' && r.options?.length ? { options: r.options.join(', ') } : {}),
+        ...(prev.kind !== 'digital' && r.options?.length && !(prev.option_groups || []).length
+          ? { option_groups: [{ name: 'Option', choices: r.options.map(label => choice(label)) }] } : {}),
       }))
       setResult(r)
       flash('Listing drafted — review and edit before saving ✨')
@@ -560,6 +607,9 @@ function DiscountCodes({ codes, reload, flash }) {
 }
 
 const styles = {
+  optGroup: { background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 12, padding: 10, marginBottom: 8 },
+  optRemove: { background: 'none', border: 'none', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 },
+  optAdd: { background: 'none', border: 'none', color: 'var(--secondary)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '8px 0 0' },
   photo: { position: 'relative', width: 84, height: 84, borderRadius: 12, overflow: 'hidden', background: 'var(--card2)', cursor: 'pointer', flexShrink: 0 },
   cover: { position: 'absolute', left: 4, bottom: 4, background: 'var(--primary)', color: '#fff', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', borderRadius: 6, padding: '2px 6px' },
   photoNum: { position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 10, minWidth: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' },

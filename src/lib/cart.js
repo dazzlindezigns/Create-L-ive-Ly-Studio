@@ -28,6 +28,36 @@ export function lineFormat(p, wanted) {
   return wanted === 'digital' && offersDigital(p) ? 'digital' : 'physical'
 }
 export const unitPrice = (p, format) => round2(format === 'digital' && p.kind !== 'digital' ? p.digital_price : p.price)
+// Option groups the buyer picks from (physical format only), e.g. Size, Color, Sticker style.
+// Each choice can change the price. Older products stored a flat `options` list — read as one group.
+export function optionGroups(p) {
+  const raw = Array.isArray(p.option_groups) && p.option_groups.length ? p.option_groups
+    : p.options?.length ? [{ name: 'Option', choices: p.options.map(label => ({ label, price: 0 })) }] : []
+  return raw
+    .map(g => ({
+      name: String(g?.name || 'Option').trim().slice(0, 40),
+      choices: (Array.isArray(g?.choices) ? g.choices : [])
+        .map(c => ({ label: String(c?.label || '').trim().slice(0, 60), price: round2(c?.price) }))
+        .filter(c => c.label),
+    }))
+    .filter(g => g.choices.length)
+}
+
+// Wanted picks ({ Size: '4 inch' }) → valid picks (first choice when missing or unknown),
+// the extra per-unit cost, and a readable label like "Size: 4 inch · Style: Die-cut".
+export function resolveOptions(p, wanted = {}) {
+  const groups = optionGroups(p)
+  const picks = groups.map(g => {
+    const c = g.choices.find(x => x.label === wanted?.[g.name]) || g.choices[0]
+    return { group: g.name, label: c.label, price: c.price }
+  })
+  return {
+    selections: picks.length ? Object.fromEntries(picks.map(x => [x.group, x.label])) : null,
+    extra: round2(sum(picks, x => x.price)),
+    text: picks.map(x => (groups.length === 1 && x.group === 'Option' ? x.label : `${x.group}: ${x.label}`)).join(' · ') || null,
+  }
+}
+
 export const isSticker = (p) => p.collection === STICKER_BAR.collection
 
 // code = discount_codes row shape: { discount_type: 'percent'|'fixed', discount_value }
