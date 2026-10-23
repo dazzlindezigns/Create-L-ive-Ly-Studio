@@ -86,6 +86,9 @@ export default function ShopProducts() {
     setCart(prev => prev.some(c => c.key === key)
       ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity } : c)
       : [...prev, { key, productId: product.id, selections: picks, quantity: digital ? 1 : quantity, format }])
+    // Products with options stay open so customers can add another color/size combination;
+    // everything else goes straight to the cart.
+    if (picks) return
     setParam('p', null)
     setCartOpen(true)
   }
@@ -170,7 +173,8 @@ export default function ShopProducts() {
       )}
 
       {selected && <ProductModal product={selected} stackCount={stackCount} stackTiers={stackTiers} settings={settings}
-        onClose={() => setParam('p', null)} onAdd={add} disabled={!shopOpen} />}
+        onClose={() => setParam('p', null)} onAdd={add} disabled={!shopOpen} cartCount={count}
+        onViewCart={() => { setParam('p', null); setCartOpen(true) }} />}
       {cartOpen && <CartModal lines={lines} settings={settings} stackTiers={stackTiers} shopOpen={shopOpen} onClose={() => setCartOpen(false)}
         setQty={(key, q) => setCart(prev => q <= 0 ? prev.filter(c => c.key !== key) : prev.map(c => c.key === key ? { ...c, quantity: q } : c))}
         onCheckedOut={() => setCart([])} />}
@@ -225,12 +229,13 @@ function ComingSoon({ collection, onBrowse }) {
   )
 }
 
-function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAdd, disabled }) {
+function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAdd, disabled, cartCount, onViewCart }) {
   const both = offersPhysical(product) && offersDigital(product)
   const soldOut = product.kind !== 'digital' && product.stock != null && product.stock <= 0
   const [format, setFormat] = useState(product.kind === 'digital' || (both && soldOut) ? 'digital' : 'physical')
   const groups = optionGroups(product)
   const [picks, setPicks] = useState(() => resolveOptions(product).selections || {})
+  const [added, setAdded] = useState(null) // last combination added, e.g. "2 × Color: Blush · Size: Large"
   const [qty, setQty] = useState(1)
   const [imgIdx, setImgIdx] = useState(0)
   const isDigital = format === 'digital'
@@ -325,7 +330,17 @@ function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAd
           <div style={{ ...ui.hint, padding: '6px 12px' }}>Stack & Save: mix any products and formats — the discount applies automatically.</div>
         </div>
       )}
-      <Button block disabled={disabled || unavailable} onClick={() => onAdd(product, opts?.selections || null, qty, format)} style={{ marginTop: 14 }}>
+      {added && (
+        <div style={styles.added} role="status">
+          <div><strong>✓ Added</strong> {added}</div>
+          <div style={{ ...ui.hint, marginTop: 2 }}>Pick another {groups.map(g => g.name.toLowerCase()).join(' or ')} to add more, or check out.</div>
+          <Button small variant="ghost" onClick={onViewCart} style={{ marginTop: 8 }}>View cart ({cartCount}) →</Button>
+        </div>
+      )}
+      <Button block disabled={disabled || unavailable} style={{ marginTop: 14 }} onClick={() => {
+        onAdd(product, opts?.selections || null, qty, format)
+        if (opts?.selections) { setAdded(`${qty} × ${opts.text}`); setQty(1) }
+      }}>
         {disabled ? 'Shop is closed' : unavailable ? 'Sold out' : `Add to cart · ${fmt(price * (isDigital ? 1 : qty))}`}
       </Button>
     </Modal>
@@ -537,6 +552,7 @@ const styles = {
   ctaGhost: { font: 'inherit', display: 'inline-flex', alignItems: 'center', background: '#fff', color: 'var(--dark)', border: '1px solid var(--border)', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer' },
   choice: { font: 'inherit', padding: '9px 14px', borderRadius: 12, border: '1.5px solid var(--border)', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   choiceOn: { borderColor: 'var(--primary)', background: 'var(--card2)', color: 'var(--dark)', boxShadow: '0 0 0 1px var(--primary) inset' },
+  added: { marginTop: 14, padding: '12px 14px', borderRadius: 12, background: 'rgba(47,158,98,0.08)', border: '1px solid rgba(47,158,98,0.3)', fontSize: 14 },
   addCode: { background: 'none', border: 'none', padding: '12px 0 0', fontSize: 13, fontWeight: 600, color: 'var(--secondary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 },
   series: { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 2 },
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
