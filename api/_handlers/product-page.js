@@ -1,6 +1,7 @@
 import { db, requireMethod, APP_URL, BRAND } from '../_lib/core.js'
 import { esc } from '../_lib/email.js'
 import { fmt } from '../../src/lib/money.js'
+import { optionGroups } from '../../src/lib/cart.js'
 
 // /p/:id is rewritten here (vercel.json) so shared product links preview with the product's
 // photo, name and price in texts, Instagram and Facebook. It serves the normal app page with
@@ -23,7 +24,7 @@ export default async function handler(req, res) {
   if (ID.test(id)) {
     // A lookup failure just means a generic preview — the page itself must still load.
     try {
-      const { data } = await db().from('products').select('id, name, description, price, digital_price, kind, image_urls').eq('id', id).eq('active', true).maybeSingle()
+      const { data } = await db().from('products').select('*').eq('id', id).eq('active', true).maybeSingle()
       product = data
     } catch (e) { console.error('product-page lookup failed:', e.message) }
   }
@@ -41,8 +42,8 @@ export default async function handler(req, res) {
   }
 
   if (product) {
-    const price = product.kind !== 'digital' && product.digital_price != null
-      ? `from ${fmt(Math.min(product.price, product.digital_price))}` : fmt(product.price)
+    const varies = product.kind !== 'digital' && (product.digital_price != null || optionGroups(product).some(g => g.choices.some(c => c.price > 0)))
+    const price = varies ? `from ${fmt(Math.min(product.price, product.digital_price ?? Infinity))}` : fmt(product.price)
     const title = `${product.name} — ${BRAND.name}`
     const description = `${price} · ${String(product.description || BRAND.tagline).replace(/\s+/g, ' ').trim().slice(0, 180)}`
     const image = absolute(product.image_urls?.[0])

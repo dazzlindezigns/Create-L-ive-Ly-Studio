@@ -8,6 +8,8 @@ import { ui, Button, Field, Input, TextArea, Select, Loading, Modal } from '../c
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 
 const CART_KEY = 'shop-cart-v3'
+// Some option choices cost more (e.g. bigger sizes), so the listed price is a starting price.
+const priceVaries = (p) => p.kind !== 'digital' && optionGroups(p).some(g => g.choices.some(c => c.price > 0))
 const loadCart = () => { try { return JSON.parse(localStorage.getItem(CART_KEY)) || [] } catch { return [] } }
 
 // Products, settings and the cart (saved in this browser) — shared by the shop and single product pages.
@@ -163,7 +165,7 @@ export default function ShopProducts() {
                   {p.series && <div style={styles.series}>{p.series} collection</div>}
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
                   <div style={{ fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>
-                    {both ? `from ${fmt(Math.min(p.price, p.digital_price))}` : fmt(p.price)}
+                    {both || priceVaries(p) ? `from ${fmt(both ? Math.min(p.price, p.digital_price) : p.price)}` : fmt(p.price)}
                   </div>
                 </div>
               </button>
@@ -251,6 +253,8 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
   const soldOut = product.kind !== 'digital' && product.stock != null && product.stock <= 0
   const [format, setFormat] = useState(product.kind === 'digital' || (both && soldOut) ? 'digital' : 'physical')
   const groups = optionGroups(product)
+  // A group whose choices change the price (e.g. Size) shows each choice's full price on its button.
+  const pricedGroups = groups.filter(g => g.choices.some(c => c.price !== 0))
   const [picks, setPicks] = useState(() => resolveOptions(product).selections || {})
   const [added, setAdded] = useState(null) // last combination added, e.g. "2 × Color: Blush · Size: Large"
   const [qty, setQty] = useState(1)
@@ -319,7 +323,9 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
               return (
                 <button key={c.label} type="button" onClick={() => setPicks(prev => ({ ...prev, [g.name]: c.label }))}
                   style={{ ...styles.choice, ...(on ? styles.choiceOn : {}) }} aria-pressed={on}>
-                  {c.label}{c.price !== 0 && <span style={{ opacity: 0.8, fontWeight: 600 }}> {c.price > 0 ? '+' : '−'}{fmt(Math.abs(c.price))}</span>}
+                  {c.label}{pricedGroups.length === 1 && pricedGroups[0] === g
+                    ? <span style={{ opacity: 0.8, fontWeight: 600 }}> · {fmt(unitPrice(product, 'physical') + c.price)}</span>
+                    : c.price !== 0 && <span style={{ opacity: 0.8, fontWeight: 600 }}> {c.price > 0 ? '+' : '−'}{fmt(Math.abs(c.price))}</span>}
                 </button>
               )
             })}

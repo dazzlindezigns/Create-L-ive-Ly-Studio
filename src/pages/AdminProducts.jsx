@@ -22,7 +22,14 @@ const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', b
 // Sticker Bar sheet: one listing, sold as vinyl AND as a download (prices from her mockups).
 const BLANK_SHEET = { ...BLANK, collection: STICKER_BAR.collection, price: 6.5, digital_price: 4, sell_digital: true, option_groups: [STICKER_STYLE()], description: 'A sheet of 12 premium waterproof vinyl stickers. Perfect for planners, journals, laptops and water bottles.' }
 const LOW_STOCK = 5
-const toForm = (p) => ({ ...p, option_groups: optionGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
+// In the editor, the group whose choices set the price ("own prices") holds full prices;
+// saved data keeps the cheapest as the product price and each choice as a difference from it.
+const formGroups = (p) => {
+  const groups = optionGroups(p)
+  const i = groups.findIndex(g => g.choices.some(c => c.price !== 0))
+  return groups.map((g, j) => j !== i ? g : { ...g, ownPrices: true, choices: g.choices.map(c => ({ ...c, price: round2(Number(p.price) + c.price) })) })
+}
+const toForm = (p) => ({ ...p, option_groups: formGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
 export default function AdminProducts() {
@@ -123,6 +130,10 @@ export default function AdminProducts() {
 function OptionGroupsEditor({ groups, onChange }) {
   const setGroup = (i, patch) => onChange(groups.map((g, j) => j === i ? { ...g, ...patch } : g))
   const setChoice = (i, k, patch) => setGroup(i, { choices: groups[i].choices.map((c, j) => j === k ? { ...c, ...patch } : c) })
+  // One group can carry the prices (e.g. Size: Small $10 / Large $15); the rest are just names.
+  const setOwnPrices = (i, on) => onChange(groups.map((g, j) => j === i
+    ? { ...g, ownPrices: on, choices: g.choices.map(c => ({ ...c, price: 0 })) }
+    : on && g.ownPrices ? { ...g, ownPrices: false, choices: g.choices.map(c => ({ ...c, price: 0 })) } : g))
   return (
     <div>
       <div style={ui.label}>Options</div>
@@ -136,12 +147,21 @@ function OptionGroupsEditor({ groups, onChange }) {
           {g.choices.map((c, k) => (
             <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
               <Input value={c.label} placeholder="Choice" onChange={e => setChoice(i, k, { label: e.target.value })} style={{ flex: 2, padding: '9px 10px', fontSize: 14 }} />
-              <Input type="number" step="0.01" value={c.price === 0 ? '' : c.price} placeholder="+$0" title="Price change from the base price"
-                onChange={e => setChoice(i, k, { price: e.target.value === '' ? 0 : Number(e.target.value) })} style={{ flex: 1, minWidth: 70, padding: '9px 10px', fontSize: 14 }} />
+              {(g.ownPrices || g.choices.some(x => x.price)) && (
+                <Input id={g.ownPrices && k === 0 ? 'option-prices' : undefined} type="number" step="0.01" min="0" inputMode="decimal"
+                  value={c.price === 0 ? '' : c.price} placeholder={g.ownPrices ? '$ Price' : '+$0'}
+                  title={g.ownPrices ? 'Price for this choice' : 'Extra cost for this choice'}
+                  onChange={e => setChoice(i, k, { price: e.target.value === '' ? 0 : Number(e.target.value) })} style={{ flex: 1, minWidth: 80, padding: '9px 10px', fontSize: 14 }} />
+              )}
               <button type="button" onClick={() => setGroup(i, { choices: g.choices.filter((_, j) => j !== k) })} style={{ ...styles.x, position: 'static', flexShrink: 0 }} aria-label="Remove choice">×</button>
             </div>
           ))}
-          <button type="button" onClick={() => setGroup(i, { choices: [...g.choices, choice('')] })} style={styles.optAdd}>+ Add choice</button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setGroup(i, { choices: [...g.choices, choice('')] })} style={styles.optAdd}>+ Add choice</button>
+            <label style={{ ...styles.check, fontSize: 13, paddingTop: 8 }}>
+              <input type="checkbox" checked={Boolean(g.ownPrices)} onChange={e => setOwnPrices(i, e.target.checked)} /> Each choice has its own price
+            </label>
+          </div>
         </div>
       ))}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
@@ -149,7 +169,7 @@ function OptionGroupsEditor({ groups, onChange }) {
           <button key={label} type="button" onClick={() => onChange([...groups, make()])} style={styles.chip}>+ {label}</button>
         ))}
       </div>
-      <div style={{ ...ui.hint, marginTop: 6 }}>The first choice is selected by default. Leave the $ box empty when a choice costs the same; enter 1.50 to add $1.50 or −1 to take $1 off.</div>
+      <div style={{ ...ui.hint, marginTop: 6 }}>The first choice is selected by default. Choices cost the product’s price — unless you tick “Each choice has its own price” on one option (like Size), then type each choice’s price and the main price isn’t needed.</div>
     </div>
   )
 }
@@ -340,8 +360,28 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
     } catch (err) { flash(err.message, 'error') } finally { setFileUploading(false) }
   }
 
+  const pricedGroup = !isDigital && (p.option_groups || []).find(g => g.ownPrices)
+  const pricedFrom = pricedGroup ? Math.min(...pricedGroup.choices.map(c => Number(c.price)).filter(v => v > 0)) : null
+
   const save = async () => {
-    if (!p.name.trim() || !(Number(p.price) > 0)) return flash('Name and price are required', 'error')
+    // Point at the exact field — it's usually scrolled out of view by the options.
+    const missing = (id, msg) => {
+      const el = document.getElementById(id)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); el?.focus({ preventScroll: true })
+      flash(msg, 'error')
+    }
+    if (!p.name.trim()) return missing('product-name', 'Add a product name (top of the form)')
+    // When a group's choices carry the prices, the cheapest becomes the product price.
+    let base = Number(p.price)
+    let groups = p.option_groups || []
+    const priced = !isDigital && groups.find(g => g.ownPrices)
+    if (priced) {
+      const named = priced.choices.filter(c => String(c.label).trim())
+      if (!named.length || named.some(c => !(Number(c.price) > 0))) return missing('option-prices', `Give every ${priced.name || 'option'} choice a price`)
+      base = Math.min(...named.map(c => Number(c.price)))
+      groups = groups.map(g => g !== priced ? g : { name: g.name, choices: g.choices.map(c => ({ label: c.label, price: round2(Number(c.price) - base) })) })
+    }
+    if (!(base > 0)) return missing('product-price', `Add the ${p.sell_digital && !isDigital ? 'physical ' : ''}price (above), or tick “Each choice has its own price” on an option`)
     if (p.sell_digital && !isDigital && !(Number(p.digital_price) > 0)) return flash('Add the digital price', 'error')
     if (hasFile && !p.digital_file_path && p.active) return flash('Upload the download file, or untick "Visible in shop" to save a draft', 'error')
     setBusy(true)
@@ -354,9 +394,9 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
       digital_file_name: hasFile ? p.digital_file_name : null,
       digital_price: !isDigital && p.sell_digital ? round2(p.digital_price) : null,
       stock: !isDigital && String(p.stock).trim() !== '' ? Math.max(0, parseInt(p.stock, 10) || 0) : null,
-      name: p.name.trim(), description: p.description?.trim() || null, price: round2(p.price),
+      name: p.name.trim(), description: p.description?.trim() || null, price: round2(base),
       // Options live in option_groups now; the old flat list is cleared once a product is saved.
-      option_groups: isDigital ? [] : optionGroups({ option_groups: p.option_groups }),
+      option_groups: isDigital ? [] : optionGroups({ option_groups: groups }),
       options: [],
       image_urls: p.image_urls || [], bulk_pricing_enabled: p.bulk_pricing_enabled, active: p.active,
       sort_order: parseInt(p.sort_order, 10) || 0,
@@ -402,7 +442,7 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
         </div>
         <ImageStudio p={p} setP={setP} flash={flash} />
         <ListingAssistant p={p} setP={setP} flash={flash} />
-        <Field label="Name"><Input value={p.name} onChange={set('name')} /></Field>
+        <Field label="Name"><Input id="product-name" value={p.name} onChange={set('name')} /></Field>
         <Field label="Collection">
           <Select value={p.collection || ''} onChange={set('collection')}
             options={[{ value: '', label: 'No collection' }, ...COLLECTIONS.map(c => ({ value: c.key, label: c.name }))]} />
@@ -417,7 +457,13 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
           </Field>
         </div>
         <div style={ui.row}>
-          <Field label={isDigital ? 'Price ($)' : p.sell_digital ? 'Physical price ($)' : 'Price ($)'}><Input type="number" step="0.01" value={p.price} onChange={set('price')} /></Field>
+          {pricedGroup ? (
+            <Field label={p.sell_digital ? 'Physical price' : 'Price'}>
+              <div style={styles.priceFrom}>From {pricedGroup.name || 'option'} choices{pricedFrom ? ` · from ${fmt(pricedFrom)}` : ''}</div>
+            </Field>
+          ) : (
+            <Field label={isDigital ? 'Price ($)' : p.sell_digital ? 'Physical price ($)' : 'Price ($)'}><Input id="product-price" type="number" step="0.01" min="0" inputMode="decimal" value={p.price} onChange={set('price')} /></Field>
+          )}
           {!isDigital && <Field label="Stock on hand" hint="Blank = don’t track"><Input type="number" min={0} value={p.stock} onChange={set('stock')} /></Field>}
           <Field label="Sort order"><Input type="number" value={p.sort_order} onChange={set('sort_order')} /></Field>
         </div>
@@ -638,6 +684,7 @@ function DiscountCodes({ codes, reload, flash }) {
 }
 
 const styles = {
+  priceFrom: { ...ui.input, background: 'var(--card2)', color: 'var(--mid)', fontSize: 14, display: 'flex', alignItems: 'center' },
   shareRow: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)' },
   optGroup: { background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 12, padding: 10, marginBottom: 8 },
   optRemove: { background: 'none', border: 'none', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 },
