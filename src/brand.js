@@ -27,7 +27,7 @@ export const BRAND = {
 }
 
 // Footer credit for the agency that built this app.
-export const BUILT_BY = { name: 'Dani Creates It', url: 'https://appque.danicreatesit.com' }
+export const BUILT_BY = { name: 'Dani Creates It', url: 'https://makeme.danicreatesit.com' }
 
 // From her Payhip theme: --pink-dark #c96e88, --pink #efa2b3, --ink #352c30,
 // --muted #786c71, --bg #fffaf9, --bg2 #fff1f3, --stroke rgba(201,110,136,.20).
