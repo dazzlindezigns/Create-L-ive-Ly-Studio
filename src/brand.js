@@ -133,6 +133,17 @@ export const PRODUCT_TYPES = [
 // Defaults — she edits them in Shop → Products (saved in settings.stack_save_tiers).
 export const STACK_TIERS = [{ min: 3, pct: 10 }, { min: 5, pct: 15 }, { min: 8, pct: 20 }]
 
+// Her partner (affiliate) program. Rename it here and it changes everywhere — pages and emails.
+// Hand emojis carry a brown skin tone (🏾) throughout the app.
+export const PARTNER_PROGRAM = {
+  name: 'The LiveLy Circle',
+  short: 'LiveLy Circle',
+  icon: '🤝🏾',
+  wave: '👋🏾',
+}
+// How she can pay partners (the partner's handle goes with it, e.g. Cash App $tasha).
+export const PAYOUT_METHODS = ['Cash App', 'Zelle', 'PayPal', 'Venmo', 'Other']
+
 // Refunds: only ready-made physical shop items can be refunded. Shown at checkout, on product
 // pages, receipts and download emails so it's clear before anyone pays.
 export const REFUND_POLICY = {

@@ -6,7 +6,7 @@ import { fmt, round2, paymentOptions, depositFor, refundable } from '../lib/mone
 import { STATUS, orderFlow, statusesFor, stepsFor, nextStep } from '../lib/status'
 import { trackingUrl } from '../../api/_lib/shipping.js'
 import { commissionFor } from '../lib/affiliates'
-import { BRAND, PRODUCT_TYPES } from '../brand'
+import { BRAND, PRODUCT_TYPES, PARTNER_PROGRAM } from '../brand'
 import Nav from '../components/Nav'
 import ShipModal from '../components/ShipModal'
 import EmailPanel from '../components/EmailPanel'
@@ -143,6 +143,7 @@ export default function OrderDetail() {
           <div className="detail-col">
             {hasDigital && <DigitalSection order={order} flash={flash} onCopy={() => copy(`${APP_URL}/downloads/${order.id}`, 'Download link copied')} />}
             {order.fulfillment !== 'digital' && <DeliverySection order={order} copy={copy} onShip={() => setShipOpen(true)} />}
+            <ReviewAsk order={order} firstName={firstName} flash={flash} copy={copy} sendStage={sendStage} reload={load} />
             <EmailPanel order={order} flash={flash} />
             <PrivateNote order={order} update={update} />
 
@@ -515,6 +516,44 @@ function QuoteSection({ order, payments, update, flash, reload, sendStage, onCop
   )
 }
 
+// ── Reviews: has this customer reviewed, and a way to (re)send the link ─────────
+function ReviewAsk({ order, firstName, flash, copy, sendStage, reload }) {
+  const [heard, setHeard] = useState(null) // { review, feedback }
+  const [sending, setSending] = useState(false)
+  const paid = Number(order.amount_paid) > 0 || order.balance_paid
+  useEffect(() => {
+    if (!paid) return
+    Promise.all([
+      supabase.from('reviews').select('rating').eq('order_id', order.id),
+      supabase.from('feedback').select('rating').eq('order_id', order.id).maybeSingle(),
+    ]).then(([r, f]) => setHeard({ reviews: r.data || [], feedback: f.data }))
+  }, [order.id, paid])
+  if (!paid || ['cancelled', 'declined', 'refunded'].includes(order.status) || !heard) return null
+
+  const link = `${APP_URL}/review/${order.id}`
+  const best = heard.reviews.length ? Math.max(...heard.reviews.map(r => r.rating)) : null
+  const status = heard.reviews.length || heard.feedback
+    ? `✓ ${heard.reviews.length ? `Reviewed (${'★'.repeat(best)})` : ''}${heard.reviews.length && heard.feedback ? ' · ' : ''}${heard.feedback ? 'Left feedback' : ''}`
+    : order.review_reminder_sent_at ? `Asked ${new Date(order.review_reminder_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} — no review yet`
+    : order.status === 'completed' ? 'No review yet — a reminder goes out automatically 5 days after it’s complete'
+    : 'The review link goes out with the thank-you email when it’s complete'
+  const email = async () => {
+    setSending(true)
+    try { await sendStage('review_request'); flash(`Review link emailed to ${firstName} ⭐`); reload() }
+    catch (e) { flash(e.message, 'error') } finally { setSending(false) }
+  }
+  return (
+    <section style={{ ...ui.card, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>⭐ Review & feedback</div>
+      <div style={{ ...ui.muted, marginTop: 2 }}>{status}</div>
+      <div style={{ ...ui.row, gap: 8, marginTop: 10 }}>
+        <Button small variant="ghost" loading={sending} onClick={email}>Email review link</Button>
+        <Button small variant="ghost" onClick={() => copy(`Hey ${firstName}! Thank you so much for your order 💕 Would you take a minute to tell me how we did? Just tap the stars:\n\n${link}\n\n— ${BRAND.ownerFirstName}`, 'Review message copied — paste it into a text!')}>Copy text</Button>
+      </div>
+    </section>
+  )
+}
+
 // ── Partner who sent this order (affiliate link) ────────────────────────────
 function PartnerTag({ order }) {
   const [name, setName] = useState(null)
@@ -526,7 +565,7 @@ function PartnerTag({ order }) {
   const c = commissionFor(order)
   return (
     <div style={{ ...ui.hint, fontSize: 13, marginTop: 8 }}>
-      🤝 Came from <strong>{name}</strong>’s link{c.state !== 'void' && <> · they earn {fmt(c.amount)}{c.state === 'paid' ? ' (paid)' : c.state === 'pending' ? ' once it’s complete' : ''}</>}
+      {PARTNER_PROGRAM.icon} Came from <strong>{name}</strong>’s link{c.state !== 'void' && <> · they earn {fmt(c.amount)}{c.state === 'paid' ? ' (paid)' : c.state === 'pending' ? ' once it’s complete' : ''}</>}
     </div>
   )
 }

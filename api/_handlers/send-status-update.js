@@ -1,4 +1,4 @@
-import { requireMethod, requireAdmin, getOrder, HttpError, firstName, APP_URL, BRAND } from '../_lib/core.js'
+import { db, requireMethod, requireAdmin, getOrder, HttpError, firstName, APP_URL, BRAND } from '../_lib/core.js'
 import { layout, panel, rows, button, sendEmail, esc } from '../_lib/email.js'
 import { fmt, paymentOptions } from '../../src/lib/money.js'
 
@@ -43,6 +43,13 @@ const STAGES = {
       cta: ['View / download receipt →', `${APP_URL}/quote/${o.id}`],
     }
   },
+  // Asking for a review: from the order page (Email review link) or the daily reminder (api/_handlers/review-reminders.js).
+  review_request: (o) => ({
+    subject: `How did we do, ${firstName(o.customer_name)}? ⭐`,
+    heading: 'We’d love to hear from you',
+    body: `We hope you're loving your <strong>${esc(o.product_type)}</strong>! Would you take a minute to tell us how we did? Just tap the stars — it helps our small business more than you know.`,
+    cta: ['⭐ Leave a review', `${APP_URL}/review/${o.id}`],
+  }),
   payment_reminder: (o) => {
     const { remaining } = paymentOptions(o)
     if (!(remaining > 0)) throw new HttpError(400, 'Nothing is owed on this order')
@@ -62,7 +69,12 @@ export default async function handler(req, res) {
   await requireAdmin(req)
   const { orderId, stage } = req.body || {}
   if (!STAGES[stage]) throw new HttpError(400, 'No email for that stage')
-  const order = await getOrder(orderId)
+  await sendStageEmail(await getOrder(orderId), stage)
+  return res.status(200).json({ success: true })
+}
+
+export async function sendStageEmail(order, stage) {
+  if (!order.customer_email) throw new HttpError(400, 'This order has no customer email')
   const e = STAGES[stage](order)
 
   await sendEmail({
@@ -77,5 +89,6 @@ export default async function handler(req, res) {
         <p style="font-size:13px;color:#999;text-align:center;margin:0;">Questions? Just reply to this email. — ${esc(BRAND.ownerFirstName)}</p>`,
     }),
   })
-  return res.status(200).json({ success: true })
+  // Any review ask (manual or automatic) counts as the one reminder, so customers aren't asked twice.
+  if (stage === 'review_request') await db().from('orders').update({ review_reminder_sent_at: new Date().toISOString() }).eq('id', order.id).then(() => {}, () => {})
 }

@@ -7,6 +7,7 @@ import { notifyAdmins } from '../_lib/push.js'
 import { cleanAddress } from '../_lib/validate.js'
 import { fmt, round2 } from '../../src/lib/money.js'
 import { cleanCode } from '../../src/lib/affiliates.js'
+import { PARTNER_PROGRAM } from '../../src/brand.js'
 import { tiersFromSettings } from '../../src/lib/cart.js'
 
 export default async function handler(req, res) {
@@ -23,7 +24,19 @@ export default async function handler(req, res) {
   const customerEmail = String(b.customerEmail || '').trim().toLowerCase()
   if (!customerName || !isEmail(customerEmail)) throw new HttpError(400, 'Name and a valid email are required')
 
-  const price = (shipping) => priceCart(b.items, b.discountCode, {
+  // LiveLy Circle partners shopping for themselves (the "Shop for myself" link on their page) get their
+  // own-order discount instead of a code. Verified by their private token; they earn no commission on it.
+  let selfPartner = null
+  if (/^[0-9a-f-]{36}$/i.test(String(b.partnerToken || ''))) {
+    const { data } = await supabase.from('affiliates').select('id, name, own_discount').eq('token', b.partnerToken).eq('active', true).maybeSingle()
+    if (data && Number(data.own_discount) > 0) selfPartner = data
+  }
+  const partnerDiscount = selfPartner && {
+    id: null, code: `${PARTNER_PROGRAM.short} (${firstName(selfPartner.name)})`,
+    discount_type: 'percent', discount_value: Number(selfPartner.own_discount),
+  }
+
+  const price = (shipping) => priceCart(b.items, partnerDiscount || b.discountCode, {
     shippingFee: shipping ? Number(settings.shop_shipping_fee) || 0 : 0,
     freeShippingOver: Number(settings.shop_free_shipping_over) || 0,
     stackTiers: tiersFromSettings(settings),
@@ -40,7 +53,7 @@ export default async function handler(req, res) {
 
   const lines = cart.lines.map(l => `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' [digital download]' : ` × ${l.quantity}`} — ${fmt(l.itemTotal)}`)
   if (cart.stackTier) lines.push(`Stack & Save ${cart.stackTier.pct}% off (−${fmt(cart.stackDiscount)})`)
-  if (cart.discount) lines.push(`Code ${cart.discount.code} (−${fmt(cart.codeDiscount)})`)
+  if (cart.discount) lines.push(`${cart.discount.id ? 'Code ' : ''}${cart.discount.code} (−${fmt(cart.codeDiscount)})`)
   if (cart.shipping) lines.push(`Shipping ${fmt(cart.shipping)}`)
   if (cart.freeShipping) lines.push('Free shipping')
 
@@ -54,7 +67,7 @@ export default async function handler(req, res) {
   // discounts, before shipping. Partners don't earn on their own orders.
   let partner = null
   const refCode = cleanCode(b.ref)
-  if (refCode) {
+  if (refCode && !selfPartner) {
     const { data } = await supabase.from('affiliates').select('id, email, rate').eq('code', refCode).eq('active', true).maybeSingle()
     if (data && String(data.email || '').toLowerCase() !== customerEmail) partner = data
   }
@@ -101,7 +114,7 @@ export default async function handler(req, res) {
   await supabase.from('orders').update({ stripe_payment_url: url }).eq('id', order.id)
 
   // Count the code use at checkout creation, like the reference app.
-  if (cart.discount) {
+  if (cart.discount?.id) {
     try { await supabase.rpc('increment_discount_uses', { code_id: cart.discount.id }) } catch {}
   }
 
@@ -117,7 +130,7 @@ async function completeFreeOrder({ supabase, order, cart, productType, customerN
   if (error) throw new HttpError(500, error.message)
   const done = { ...order, ...paid }
 
-  if (cart.discount) {
+  if (cart.discount?.id) {
     try { await supabase.rpc('increment_discount_uses', { code_id: cart.discount.id }) } catch {}
   }
   await takeFromStock(done)

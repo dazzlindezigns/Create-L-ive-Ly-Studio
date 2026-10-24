@@ -25,6 +25,7 @@ const routes = {
   'get-review':          () => import('./_handlers/get-review.js'),
   'submit-review':       () => import('./_handlers/submit-review.js'),
   'get-reviews':         () => import('./_handlers/get-reviews.js'),
+  'save-partner-payout': () => import('./_handlers/save-partner-payout.js'),
   // Admin (require a signed-in admin)
   'send-quote':          () => import('./_handlers/send-quote.js'),
   'send-proof':          () => import('./_handlers/send-proof.js'),
@@ -41,6 +42,9 @@ const routes = {
   'send-customer-email': () => import('./_handlers/send-customer-email.js'),
   'draft-email':         () => import('./_handlers/draft-email.js'),
   'refund-order':        () => import('./_handlers/refund-order.js'),
+  'resend-partner-welcome': () => import('./_handlers/resend-partner-welcome.js'),
+  // Cron (vercel.json) — checks CRON_SECRET itself
+  'review-reminders':    () => import('./_handlers/review-reminders.js'),
 }
 
 export default async function handler(req, res) {

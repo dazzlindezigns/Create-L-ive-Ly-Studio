@@ -3,8 +3,8 @@ import { useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { fmt } from '../lib/money'
 import { REF_DAYS } from '../lib/affiliates'
-import { BRAND } from '../brand'
-import { ui, Button, BrandHeader, Loading, useFlash } from '../components/ui'
+import { BRAND, PARTNER_PROGRAM, PAYOUT_METHODS } from '../brand'
+import { ui, Button, Field, Input, Select, BrandHeader, Loading, useFlash } from '../components/ui'
 
 const STATE_LABEL = { pending: 'Pending — order not complete yet', ready: 'Earned — payment coming', paid: 'Paid ✓' }
 
@@ -30,8 +30,8 @@ export default function PartnerPage() {
     <Shell>
       {toast}
       <section style={ui.card}>
-        <div style={ui.eyebrow}>{d.business} partner</div>
-        <h1 style={{ ...ui.h1, fontSize: 26, marginTop: 4 }}>Hi {d.name.split(' ')[0]} 👋</h1>
+        <div style={ui.eyebrow}>{d.program || PARTNER_PROGRAM.name}</div>
+        <h1 style={{ ...ui.h1, fontSize: 26, marginTop: 4 }}>Hi {d.name.split(' ')[0]} {PARTNER_PROGRAM.wave}</h1>
         <p style={{ ...ui.muted, fontSize: 14, marginTop: 6 }}>
           You earn <strong>{d.rate}%</strong> of every purchase made through your links. {!d.active && <strong>Your link is paused right now.</strong>}
         </p>
@@ -40,6 +40,12 @@ export default function PartnerPage() {
           <Button small onClick={() => share(shopLink, 'Link copied')}>Share</Button>
         </div>
       </section>
+
+      {d.ownDiscount > 0 && d.active && (
+        <a href={`/shop/products?partner=${token}`} style={{ textDecoration: 'none' }}>
+          <Button block variant="gradient">🛍 Shop for myself · {d.ownDiscount}% off</Button>
+        </a>
+      )}
 
       <section style={styles.stats}>
         <Stat n={d.clicks} label="Clicks" />
@@ -83,11 +89,38 @@ export default function PartnerPage() {
         )}
       </section>
 
+      <PayoutForm token={token} initial={d} flash={flash} />
+
       <p style={{ ...ui.muted, fontSize: 12, lineHeight: 1.6, textAlign: 'center' }}>
-        Your links never expire. Anyone who taps one is credited to you for {REF_DAYS} days, even if they come back later to buy. You earn on items after discounts (not shipping).
-        Earnings are paid once an order is complete; refunded orders don’t count. Keep this page private — it’s just for you.
+        Your links never expire. When someone taps one, they count as yours for {REF_DAYS} days — if they buy today or come back next week, you still get credit. You earn on items after discounts (not shipping).
+        Earnings are paid once an order is complete; refunded orders don’t count. “Shop for myself” gives you your discount (your own orders don’t earn commission). Keep this page private — it’s just for you.
       </p>
     </Shell>
+  )
+}
+
+// Partners add how they'd like to be paid (Cash App name, Zelle, etc.) so she has it when paying out.
+function PayoutForm({ token, initial, flash }) {
+  const [method, setMethod] = useState(initial.payoutMethod || '')
+  const [handle, setHandle] = useState(initial.payoutHandle || '')
+  const [saved, setSaved] = useState(Boolean(initial.payoutMethod && initial.payoutHandle))
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    try { await api('save-partner-payout', { body: { token, method, handle } }); setSaved(true); flash('Saved — thank you! 💕') }
+    catch (e) { flash(e.message, 'error') } finally { setBusy(false) }
+  }
+  const label = { 'Cash App': 'Your $cashtag', Zelle: 'Zelle phone or email', PayPal: 'PayPal email or @name', Venmo: 'Venmo @name' }[method] || 'Name / handle'
+  return (
+    <section style={ui.card}>
+      <h2 style={{ ...ui.h2, marginBottom: 4 }}>How you get paid</h2>
+      <p style={{ ...ui.muted, marginBottom: 10 }}>{saved ? `We’ll pay you by ${method} (${handle}).` : 'Tell us where to send your earnings.'}</p>
+      <div style={ui.row}>
+        <Field label="Pay me by"><Select value={method} onChange={e => { setMethod(e.target.value); setSaved(false) }} options={[{ value: '', label: 'Choose…' }, ...PAYOUT_METHODS]} /></Field>
+        <Field label={label}><Input value={handle} onChange={e => { setHandle(e.target.value); setSaved(false) }} placeholder={method === 'Cash App' ? '$yourname' : ''} /></Field>
+      </div>
+      {!saved && <Button small loading={busy} disabled={!method || !handle.trim()} onClick={save} style={{ marginTop: 12 }}>Save</Button>}
+    </section>
   )
 }
 
@@ -101,7 +134,7 @@ const Stat = ({ n, label }) => (
 function Shell({ children }) {
   return (
     <div style={{ ...ui.page, paddingBottom: 40 }}>
-      <BrandHeader subtitle="Partner page" />
+      <BrandHeader subtitle={PARTNER_PROGRAM.name} />
       <div style={{ ...ui.wrap, maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
     </div>
   )

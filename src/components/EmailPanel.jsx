@@ -7,7 +7,7 @@ import { ui, Button, Field, Input, TextArea, Select, Badge } from './ui'
 const KIND_LABELS = {
   reply: 'Customer reply', manual: 'Written by you', request_received: 'Request received', quote: 'Quote', invoice: 'Invoice',
   proof: 'Proof', shipped: 'Shipped', receipt: 'Payment receipt', downloads: 'Downloads',
-  in_production: 'In production', ready_for_pickup: 'Ready for pickup', completed: 'Thank you', declined: 'Declined', payment_reminder: 'Payment reminder', refund: 'Refund',
+  in_production: 'In production', ready_for_pickup: 'Ready for pickup', completed: 'Thank you', declined: 'Declined', payment_reminder: 'Payment reminder', refund: 'Refund', review_request: 'Review request', partner_welcome: 'Partner welcome',
 }
 
 // Emails that didn't reach the customer (Resend webhook or a failed send).

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE } from '../brand'
+import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE, PARTNER_PROGRAM } from '../brand'
 import { normalizeTiers, tiersFromSettings, optionGroups } from '../lib/cart'
 import Nav from '../components/Nav'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash } from '../components/ui'
@@ -35,6 +35,7 @@ const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supaba
 
 export default function AdminProducts() {
   const navigate = useNavigate()
+  const [panel, setPanel] = useState(null) // 'settings' | 'codes' | 'stack'
   const [products, setProducts] = useState(null)
   const [codes, setCodes] = useState(null)
   const [settings, setSettings] = useState({})
@@ -84,13 +85,14 @@ export default function AdminProducts() {
           </div>
         </header>
 
-        <div style={{ ...ui.card, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 13, color: 'var(--mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{APP_URL}/shop/products</span>
-          <Button small variant="ghost" onClick={() => navigator.clipboard.writeText(`${APP_URL}/shop/products`).then(() => flash('Shop link copied'))}>Copy</Button>
-        </div>
-        <div style={{ ...ui.row, gap: 8 }}>
-          <Button small variant="ghost" onClick={() => navigate('/dashboard/partners')}>🤝 Partners</Button>
-          <Button small variant="ghost" onClick={() => navigate('/dashboard/inbox#reviews')}>⭐ Reviews</Button>
+        {/* Everything besides products opens from these pills, so the page stays just products. */}
+        <div style={styles.pills}>
+          <button onClick={() => setPanel('settings')} style={styles.pill}>⚙️ Shop settings</button>
+          <button onClick={() => setPanel('codes')} style={styles.pill}>🏷 Discount codes{codes?.filter(c => c.active).length ? ` · ${codes.filter(c => c.active).length}` : ''}</button>
+          <button onClick={() => setPanel('stack')} style={styles.pill}>📚 Stack & Save</button>
+          <button onClick={() => navigate('/dashboard/partners')} style={styles.pill}>{PARTNER_PROGRAM.icon} {PARTNER_PROGRAM.short}</button>
+          <button onClick={() => navigate('/dashboard/inbox#reviews')} style={styles.pill}>⭐ Reviews</button>
+          <button onClick={() => navigator.clipboard.writeText(`${APP_URL}/shop/products`).then(() => flash('Shop link copied'))} style={styles.pill}>🔗 Copy shop link</button>
         </div>
 
         {groups.map(g => (
@@ -109,21 +111,28 @@ export default function AdminProducts() {
           </section>
         ))}
 
-        <StackTiers key={JSON.stringify(tiersFromSettings(settings))} value={tiersFromSettings(settings)} onSave={v => saveSetting('stack_save_tiers', v)} />
+      </div>
 
-        <DiscountCodes codes={codes} reload={load} flash={flash} />
-
-        <section style={ui.card}>
-          <h2 style={ui.h2}>Shop settings</h2>
+      {panel === 'settings' && (
+        <Modal title="Shop settings" onClose={() => setPanel(null)}>
           <SettingField label="Flat shipping fee ($)" type="number" value={settings.shop_shipping_fee ?? 0} onSave={v => saveSetting('shop_shipping_fee', Number(v) || 0)} />
           <SettingField label="Free shipping when the order is at least ($) — 0 turns it off" type="number" value={settings.shop_free_shipping_over ?? 0} onSave={v => saveSetting('shop_free_shipping_over', Number(v) || 0)} />
           <SettingField label="Message when shop is closed" multiline value={settings.shop_closed_message || ''} onSave={v => saveSetting('shop_closed_message', v)}
             template={SHOP_CLOSED_TEMPLATE} />
           <SettingField label="In-person payment instructions (shown on quotes)" value={settings.in_person_payment_note || ''} onSave={v => saveSetting('in_person_payment_note', v)} />
           <p style={ui.hint}>Open/close the shop from the Orders dashboard.</p>
-        </section>
-      </div>
-
+        </Modal>
+      )}
+      {panel === 'codes' && (
+        <Modal title="Discount codes" onClose={() => setPanel(null)}>
+          <DiscountCodes codes={codes} reload={load} flash={flash} />
+        </Modal>
+      )}
+      {panel === 'stack' && (
+        <Modal title="Stack & Save" onClose={() => setPanel(null)}>
+          <StackTiers key={JSON.stringify(tiersFromSettings(settings))} value={tiersFromSettings(settings)} onSave={v => saveSetting('stack_save_tiers', v)} />
+        </Modal>
+      )}
       {editing && <ProductModal product={editing} seriesList={[...new Set(products.map(x => x.series).filter(Boolean))]} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
       {toast}
       <Nav />
@@ -312,8 +321,7 @@ function StackTiers({ value, onSave }) {
   const set = (i, k, v) => setTiers(prev => prev.map((t, j) => j === i ? { ...t, [k]: v } : t))
   const changed = JSON.stringify(tiers) !== JSON.stringify(initial())
   return (
-    <section style={ui.card}>
-      <h2 style={ui.h2}>Stack & Save</h2>
+    <div>
       <p style={{ ...ui.muted, marginBottom: 12 }}>Customers get this discount when they mix several items from anywhere in the shop. Untick “Counts toward Stack & Save” on a product to leave it out.</p>
       {tiers.map((t, i) => (
         <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
@@ -326,7 +334,7 @@ function StackTiers({ value, onSave }) {
         {tiers.length < 6 && <Button small variant="ghost" onClick={() => setTiers(prev => [...prev, { min: (Number(prev.at(-1)?.min) || 1) + 2, pct: (Number(prev.at(-1)?.pct) || 0) + 5 }])}>+ Add tier</Button>}
         {changed && <Button small onClick={() => onSave(tiers)}>Save tiers</Button>}
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -649,6 +657,7 @@ const codeForm = (c) => ({
 function DiscountCodes({ codes, reload, flash }) {
   const [n, setN] = useState(BLANK_CODE)
   const [editing, setEditing] = useState(null) // code id being edited, or null for a new code
+  const [formOpen, setFormOpen] = useState(false)
   const set = (k) => (e) => setN(p => ({ ...p, [k]: e.target.value }))
 
   const save = async () => {
@@ -667,7 +676,7 @@ function DiscountCodes({ codes, reload, flash }) {
         : error.message, 'error')
     }
     flash(editing ? 'Code updated' : 'Code created')
-    setN(BLANK_CODE); setEditing(null); reload()
+    setN(BLANK_CODE); setEditing(null); setFormOpen(false); reload()
   }
 
   const toggle = async (c) => {
@@ -676,10 +685,15 @@ function DiscountCodes({ codes, reload, flash }) {
   }
 
   return (
-    <section style={ui.card}>
-      <h2 style={ui.h2}>Discount codes</h2>
-      {(codes || []).map(c => (
-        <div key={c.id} style={{ ...styles.codeRow, ...(editing === c.id ? { background: 'var(--card2)', margin: '0 -10px', padding: '10px' } : {}) }}>
+    <div>
+      {!formOpen && (
+        <>
+          <Button small onClick={() => { setEditing(null); setN(BLANK_CODE); setFormOpen(true) }}>+ New code</Button>
+          {!(codes || []).length && <p style={{ ...ui.muted, marginTop: 12 }}>No codes yet.</p>}
+        </>
+      )}
+      {!formOpen && (codes || []).map(c => (
+        <div key={c.id} style={styles.codeRow}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 15, opacity: c.active ? 1 : 0.5 }}>{c.code}</div>
             <div style={ui.muted}>
@@ -689,12 +703,13 @@ function DiscountCodes({ codes, reload, flash }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            <Button small variant="ghost" onClick={() => { setEditing(c.id); setN(codeForm(c)) }}>Edit</Button>
+            <Button small variant="ghost" onClick={() => { setEditing(c.id); setN(codeForm(c)); setFormOpen(true) }}>Edit</Button>
             <Button small variant={c.active ? 'ghost' : 'secondary'} onClick={() => toggle(c)}>{c.active ? 'Disable' : 'Enable'}</Button>
           </div>
         </div>
       ))}
-      <div style={{ ...ui.eyebrow, marginTop: 16 }}>{editing ? `Editing ${n.code || 'code'}` : 'New code'}</div>
+      {formOpen && <>
+      <div style={ui.eyebrow}>{editing ? `Editing ${n.code || 'code'}` : 'New code'}</div>
       <div style={{ ...ui.row, marginTop: 8 }}>
         <Field label="Code"><Input value={n.code} onChange={set('code')} placeholder="STICKY10" /></Field>
         <Field label="Type"><Select value={n.discount_type} onChange={set('discount_type')} options={[{ value: 'percent', label: '% off' }, { value: 'fixed', label: '$ off' }]} /></Field>
@@ -707,9 +722,10 @@ function DiscountCodes({ codes, reload, flash }) {
       </div>
       <div style={{ ...ui.row, marginTop: 12 }}>
         <Button small onClick={save}>{editing ? 'Save changes' : 'Create code'}</Button>
-        {editing && <Button small variant="ghost" onClick={() => { setEditing(null); setN(BLANK_CODE) }}>Cancel</Button>}
+        <Button small variant="ghost" onClick={() => { setEditing(null); setN(BLANK_CODE); setFormOpen(false) }}>Cancel</Button>
       </div>
-    </section>
+      </>}
+    </div>
   )
 }
 
@@ -743,5 +759,7 @@ const styles = {
   thumbSm: { width: 52, height: 52, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' },
   chip: { padding: '6px 11px', borderRadius: 50, border: '1.5px solid var(--border)', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   chipOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
+  pills: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  pill: { padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, color: 'var(--mid)', cursor: 'pointer', whiteSpace: 'nowrap' },
   codeRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' },
 }

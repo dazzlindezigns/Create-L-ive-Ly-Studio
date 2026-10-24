@@ -23,3 +23,27 @@ export function currentRef() {
   } catch { /* ignore */ }
   return null
 }
+
+// "Shop for myself" from a partner's page (?partner=<token>): their own-order discount, remembered
+// on this device. The server checks the token again at checkout and uses the real discount.
+const SELF_KEY = 'partner-self'
+
+export function capturePartnerSelf() {
+  const token = new URLSearchParams(window.location.search).get('partner')
+  if (!/^[0-9a-f-]{36}$/i.test(token || '')) return
+  fetch(`/api/get-partner?token=${encodeURIComponent(token)}`).then(r => r.ok ? r.json() : null).then(p => {
+    if (!p?.active || !(p.ownDiscount > 0)) return
+    try {
+      localStorage.setItem(SELF_KEY, JSON.stringify({ token, pct: p.ownDiscount, name: p.name.split(' ')[0], program: p.program }))
+      window.dispatchEvent(new Event('partner-self'))
+    } catch { /* private mode */ }
+  }).catch(() => {})
+}
+
+export function partnerSelf() {
+  try { return JSON.parse(localStorage.getItem(SELF_KEY) || 'null') } catch { return null }
+}
+
+export function clearPartnerSelf() {
+  try { localStorage.removeItem(SELF_KEY); window.dispatchEvent(new Event('partner-self')) } catch { /* ignore */ }
+}

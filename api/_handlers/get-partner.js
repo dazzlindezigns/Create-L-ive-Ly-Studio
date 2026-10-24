@@ -1,5 +1,6 @@
 import { db, requireMethod, HttpError, APP_URL, BRAND } from '../_lib/core.js'
 import { commissionFor, partnerTotals } from '../../src/lib/affiliates.js'
+import { PARTNER_PROGRAM } from '../../src/brand.js'
 
 // A partner's private stats page (/partner/:token). The token is the secret; no customer details are returned.
 export default async function handler(req, res) {
@@ -25,6 +26,10 @@ export default async function handler(req, res) {
     rate: Number(p.rate),
     active: p.active,
     clicks: p.clicks || 0,
+    ownDiscount: Number(p.own_discount ?? 25),
+    payoutMethod: p.payout_method || null,
+    payoutHandle: p.payout_handle || null,
+    program: PARTNER_PROGRAM.name,
     business: BRAND.name,
     siteUrl: APP_URL,
     totals: partnerTotals(orders || []),

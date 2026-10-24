@@ -2,12 +2,12 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { BRAND, COLLECTIONS, STICKER_BAR, REFUND_POLICY } from '../brand'
+import { BRAND, COLLECTIONS, STICKER_BAR, REFUND_POLICY, PARTNER_PROGRAM } from '../brand'
 import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions } from '../lib/cart'
 import { ui, Button, Field, Input, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 import Stars from '../components/Stars'
-import { currentRef } from '../lib/ref'
+import { currentRef, partnerSelf, clearPartnerSelf } from '../lib/ref'
 
 const CART_KEY = 'shop-cart-v3'
 // Some option choices cost more (e.g. bigger sizes), so the listed price is a starting price.
@@ -412,6 +412,12 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [finalSale, setFinalSale] = useState(false)
+  const [me, setMe] = useState(partnerSelf)
+  useEffect(() => {
+    const sync = () => setMe(partnerSelf())
+    window.addEventListener('partner-self', sync)
+    return () => window.removeEventListener('partner-self', sync)
+  }, [])
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }))
 
   // Display math mirrors api/_lib/pricing.js; the server recalculates before charging.
@@ -423,7 +429,8 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
     lines.map(l => ({ itemTotal: l.total, quantity: l.quantity, bulkEligible: l.product.bulk_pricing_enabled !== false })),
     {
       stackTiers,
-      code: discount && { discount_type: discount.type, discount_value: discount.value, min_order: discount.minOrder },
+      // A partner shopping for themselves gets their discount instead of a code.
+      code: me ? { discount_type: 'percent', discount_value: me.pct } : discount && { discount_type: discount.type, discount_value: discount.value, min_order: discount.minOrder },
       shippingFee: hasPhysical && f.fulfillment === 'shipping' ? fee : 0,
       freeShippingOver: freeOver,
     },
@@ -446,7 +453,8 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
         body: {
           items: lines.map(l => ({ productId: l.productId, selections: l.selections, quantity: l.quantity, format: l.format })),
           // Below a code's minimum the cart already shows full price, so the code isn't sent.
-          discountCode: discount && !t.codeShort ? discount.code : null,
+          discountCode: !me && discount && !t.codeShort ? discount.code : null,
+          partnerToken: me?.token || null,
           customerName: f.name, customerEmail: f.email, customerPhone: f.phone,
           fulfillment: hasPhysical ? f.fulfillment : 'digital',
           shippingAddress: { street: f.street, street2: f.street2, city: f.city, state: f.state, zip: f.zip },
@@ -463,8 +471,9 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
     <div style={{ background: 'var(--card2)', borderRadius: 14, padding: 14, marginTop: 12, fontSize: 14 }}>
       <Line k="Subtotal" v={fmt(subtotal)} />
       {stackTier && <Line k={`Stack & Save (${stackTier.pct}% off)`} v={`−${fmt(stackDiscount)}`} green />}
-      {discount && !t.codeShort && <Line k={`Code ${discount.code}`} v={`−${fmt(codeDiscount)}`} green />}
-      {discount && t.codeShort > 0 && <div style={{ ...ui.hint, padding: '3px 0', color: 'var(--warning)', fontWeight: 600 }}>Add {fmt(t.codeShort)} more to use {discount.code} ({fmt(t.codeMin)} minimum)</div>}
+      {me && <Line k={`${PARTNER_PROGRAM.short} discount (${me.pct}%)`} v={`−${fmt(codeDiscount)}`} green />}
+      {!me && discount && !t.codeShort && <Line k={`Code ${discount.code}`} v={`−${fmt(codeDiscount)}`} green />}
+      {!me && discount && t.codeShort > 0 && <div style={{ ...ui.hint, padding: '3px 0', color: 'var(--warning)', fontWeight: 600 }}>Add {fmt(t.codeShort)} more to use {discount.code} ({fmt(t.codeMin)} minimum)</div>}
       {shipping > 0 && <Line k="Shipping" v={fmt(shipping)} />}
       {t.freeShipping && <Line k="Shipping" v="Free 🎉" green />}
       {toFreeShipping > 0 && <div style={{ ...ui.hint, padding: '3px 0' }}>Add {fmt(toFreeShipping)} more for free shipping</div>}
@@ -497,7 +506,12 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
           ))}
           {lines.length > 0 && (
             <>
-              {showCode || discount ? (
+              {me ? (
+                <div style={styles.partnerBanner}>
+                  {PARTNER_PROGRAM.icon} Shopping as a {PARTNER_PROGRAM.short} partner — <strong>{me.pct}% off</strong> your order.
+                  <button onClick={clearPartnerSelf} style={styles.partnerOff}>Not {me.name}? Remove</button>
+                </div>
+              ) : showCode || discount ? (
                 <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
                   <Input placeholder="Discount code" value={code} autoFocus={!discount} onChange={e => setCode(e.target.value)} style={{ flex: 1 }} />
                   <Button variant="ghost" small onClick={applyCode} disabled={!code.trim()}>Apply</Button>
@@ -602,6 +616,8 @@ const styles = {
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   formatBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '12px 8px', borderRadius: 14, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', font: 'inherit', color: 'var(--dark)' },
   formatOn: { borderColor: 'var(--primary)', background: 'var(--card2)', boxShadow: '0 0 0 2px var(--primary) inset' },
+  partnerBanner: { marginTop: 14, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.5 },
+  partnerOff: { display: 'block', background: 'none', border: 'none', padding: '4px 0 0', color: 'var(--secondary)', fontWeight: 700, fontSize: 12, cursor: 'pointer' },
   asShown: { background: 'var(--card2)', borderRadius: 12, padding: '12px 14px', fontSize: 13, lineHeight: 1.5, color: 'var(--mid)' },
   digitalNote: { background: 'var(--card2)', borderRadius: 12, padding: '12px 14px', fontSize: 14, marginTop: 12 },
   qtyBtn: { width: 28, height: 28, borderRadius: '50%', border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 },

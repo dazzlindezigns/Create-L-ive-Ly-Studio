@@ -66,7 +66,8 @@ export async function priceCart(items, code, opts = {}) {
   }
 
   let discount = null
-  if (code) {
+  if (code && typeof code === 'object') discount = code // e.g. a partner's own-order discount, already verified
+  else if (code) {
     const found = await findDiscount(code)
     if (found.error) throw new HttpError(400, found.error)
     discount = found.row
