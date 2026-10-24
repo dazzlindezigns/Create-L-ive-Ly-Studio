@@ -30,7 +30,9 @@ export const STATUS_ORDER = Object.keys(STATUS)
 //   shop    — a physical item bought in the shop: paid → in production → ship or pickup → complete
 //   digital — downloads only: complete the moment it's paid (the download link is emailed)
 //   custom  — a request or invoice: quote → paid → proof → make → ship or pickup → complete
-export const orderFlow = (o) => o.source === 'shop' ? (o.fulfillment === 'digital' ? 'digital' : 'shop') : 'custom'
+// A shop order is digital when it has nothing to ship or hand over: every cart line is a download.
+const downloadsOnly = (o) => o.fulfillment === 'digital' || (Array.isArray(o.shop_cart) && o.shop_cart.length > 0 && o.shop_cart.every(l => l.kind === 'digital'))
+export const orderFlow = (o) => o.source === 'shop' ? (downloadsOnly(o) ? 'digital' : 'shop') : 'custom'
 
 const handoffStatus = (o) => o.fulfillment === 'shipping' ? 'shipped' : 'ready_for_pickup'
 
@@ -67,6 +69,10 @@ export function nextStep(o) {
     ? { label: '📦 Mark shipped', action: 'ship', short: 'Ship it', hint: 'Add the tracking number if there is one.' }
     : { label: '🎉 Ready for pickup', action: 'status', status: 'ready_for_pickup', email: 'ready_for_pickup', short: 'Ready for pickup', hint: 'Lets them know it’s ready and asks when they’ll come by.' }
 
+  // Downloads are delivered the moment they're paid, so a paid digital order only needs closing out.
+  if (flow === 'digital' && ['confirmed', 'in_production', 'ready_for_pickup', 'shipped'].includes(o.status)) {
+    return { label: '✓ Mark complete', action: 'status', status: 'completed', email: 'completed', short: 'Mark complete', hint: 'Their download link was already emailed when they paid.' }
+  }
   switch (o.status) {
     case 'pending':
       return { label: '💬 Write the quote', action: 'quote', short: 'Write quote', hint: 'Price it below, then send — they review, sign and pay online.' }
