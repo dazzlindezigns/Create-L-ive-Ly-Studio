@@ -20,7 +20,14 @@ export const BRAND = {
   timezone: 'America/New_York',
   pickupLabel: 'Local pickup (Brooklyn, NY)',
   instagram: '',
+  // Shown on the Privacy Policy and Terms pages as the way to reach her. Leave '' to say "reply to any email from us".
+  contactEmail: '',
+  legalState: 'New York', // governing law on the Terms page
+  legalUpdated: 'October 24, 2026', // change when the Privacy Policy or Terms text changes
 }
+
+// Footer credit for the agency that built this app.
+export const BUILT_BY = { name: 'Dani Creates It', url: 'https://danicreatesit.com' }
 
 // From her Payhip theme: --pink-dark #c96e88, --pink #efa2b3, --ink #352c30,
 // --muted #786c71, --bg #fffaf9, --bg2 #fff1f3, --stroke rgba(201,110,136,.20).

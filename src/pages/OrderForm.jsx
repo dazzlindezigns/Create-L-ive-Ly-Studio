@@ -223,6 +223,7 @@ export default function OrderForm() {
         <Button type="submit" variant="gradient" block loading={submitting} disabled={uploading} style={{ padding: 17, fontSize: 16 }}>
           {uploading ? 'Uploading files…' : 'Send my request →'}
         </Button>
+        <div style={{ ...ui.hint, textAlign: 'center' }}>By sending a request you agree to our <Link to="/terms" target="_blank">Terms</Link> and <Link to="/privacy" target="_blank">Privacy Policy</Link>.</div>
         <p style={{ ...ui.muted, textAlign: 'center', fontSize: 12 }}>No payment now — you'll review and approve a quote first.</p>
         </>)}
       </form>

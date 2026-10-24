@@ -20,7 +20,7 @@ export async function sendPartnerWelcome(p) {
         ]))}
         <p style="margin:0 0 6px;font-size:14px;">Your partner page has your links for every product, your clicks and your earnings.</p>
         ${button('Open your partner page →', page)}
-        <p style="font-size:12px;color:#999;text-align:center;margin:0;">Save this email — your page link is private and just for you.</p>`,
+        <p style="font-size:12px;color:#999;text-align:center;margin:0;">Save this email — your page link is private and just for you. <a href="${APP_URL}/terms#partners">Partner terms</a></p>`,
     }),
   })
   await db().from('affiliates').update({ welcomed_at: new Date().toISOString() }).eq('id', p.id)

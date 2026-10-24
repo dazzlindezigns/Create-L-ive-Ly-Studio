@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { BRAND, COLLECTIONS } from '../brand'
+import { BRAND, COLLECTIONS, BUILT_BY } from '../brand'
 
 const LINKS = [
   { to: '/shop/products', label: 'Shop' },
@@ -62,7 +62,15 @@ export function SiteFooter() {
           <Link to="/login" style={{ ...styles.footLink, opacity: 0.6 }}>Studio login</Link>
         </div>
       </div>
-      <div className="container" style={styles.copy}>© {new Date().getFullYear()} {BRAND.name}</div>
+      <div className="container" style={styles.copy}>
+        <span>© {new Date().getFullYear()} {BRAND.name}</span>
+        <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <Link to="/privacy" style={styles.copyLink}>Privacy</Link>
+          <Link to="/terms" style={styles.copyLink}>Terms</Link>
+        </span>
+        {/* Credit for the studio that built the app. */}
+        <a href={BUILT_BY.url} target="_blank" rel="noopener" style={styles.builtBy}>Powered by <strong>{BUILT_BY.name}</strong></a>
+      </div>
     </footer>
   )
 }
@@ -81,5 +89,7 @@ const styles = {
   footHead: { fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: 10 },
   footLink: { display: 'block', fontSize: 14, color: 'var(--mid)', textDecoration: 'none', padding: '4px 0' },
   footText: { fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginTop: 10 },
-  copy: { fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)', padding: '14px 20px 24px', borderTop: '1px solid var(--border)' },
+  copy: { fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)', padding: '14px 20px 24px', borderTop: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px 18px' },
+  copyLink: { color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 },
+  builtBy: { color: 'var(--muted)', textDecoration: 'none', letterSpacing: '0.06em', textTransform: 'none', fontSize: 12 },
 }

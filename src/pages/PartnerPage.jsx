@@ -93,7 +93,7 @@ export default function PartnerPage() {
 
       <p style={{ ...ui.muted, fontSize: 12, lineHeight: 1.6, textAlign: 'center' }}>
         Your links never expire. When someone taps one, they count as yours for {REF_DAYS} days — if they buy today or come back next week, you still get credit. You earn on items after discounts (not shipping).
-        Earnings are paid once an order is complete; refunded orders don’t count. “Shop for myself” gives you your discount (your own orders don’t earn commission). Keep this page private — it’s just for you.
+        Earnings are paid once an order is complete; refunded orders don’t count. “Shop for myself” gives you your discount (your own orders don’t earn commission). Keep this page private — it’s just for you. <a href="/terms#partners">Partner terms</a>
       </p>
     </Shell>
   )

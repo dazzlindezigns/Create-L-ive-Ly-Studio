@@ -574,6 +574,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
           <Button type="submit" block loading={busy} disabled={total > 0 && total < 0.5}>
             {total === 0 ? 'Place free order →' : `Pay ${fmt(total)} securely →`}
           </Button>
+          <div style={{ ...ui.hint, textAlign: 'center' }}>By placing your order you agree to our <Link to="/terms" target="_blank">Terms</Link> and <Link to="/privacy" target="_blank">Privacy Policy</Link>.</div>
           <Button type="button" variant="ghost" block onClick={() => setStep('cart')}>← Back to cart</Button>
         </form>
       )}
