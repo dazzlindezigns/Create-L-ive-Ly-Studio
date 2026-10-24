@@ -12,7 +12,7 @@ Order management + shop PWA for **Create(L)ive(Ly) Studio** (3D prints, custom g
 - Stripe Checkout Sessions (form-encoded POST, `STRIPE_SECRET_KEY`; `api/_lib/stripe.js`), Resend, web-push, Anthropic SDK (`claude-opus-4-8` via `api/_lib/anthropic.js`, structured outputs via zod), Gemini image API (REST, `GEMINI_API_KEY`). No shipping-label integration — tracking is entered manually.
 
 ## Layout
-- Public pages: `/` homepage (`Home.jsx`), `/custom` order form (only reached from CTAs; old `/?type=` and `/order` links still work), `/shop/products`. Public pages share `SiteHeader`/`SiteFooter` (`src/components/SiteChrome.jsx`).
+- Public pages: `/` homepage (`Home.jsx`), `/custom` order form (only reached from CTAs; old `/?type=` and `/order` links still work), `/shop/products`, and `/p/:id` — one product on its own page for shared links (`ProductPage.jsx`; vercel.json rewrites `/p/:id` to `api/_handlers/product-page.js`, which serves the app shell with that product's title/photo/price as link-preview tags). Shop and product page share `useShop()`, `ProductDetail` and `CartModal` from `ShopProducts.jsx`. Public pages share `SiteHeader`/`SiteFooter` (`src/components/SiteChrome.jsx`).
 - Responsive behavior uses the small class set in `src/index.css` (`container`, `grid-2`, `grid-4`, `hero-grid`, `order-grid`, `detail-cols`, `admin-sidebar`, `hide-desktop`…), because inline styles can't hold media queries. Admin pages render `<Nav>`, which adds `body.admin-layout` (desktop sidebar) and the phone bottom bar.
 - The installable PWA is admin-only: `enableAdminApp()` in `src/lib/pwa.js` adds the manifest and iOS tags on `/dashboard` and `/login`. Don't put `<link rel="manifest">` back in `index.html`.
 

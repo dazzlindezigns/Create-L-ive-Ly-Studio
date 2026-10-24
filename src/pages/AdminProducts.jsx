@@ -154,6 +154,25 @@ function OptionGroupsEditor({ groups, onChange }) {
   )
 }
 
+// Direct link to one product (/p/:id) for texts and social posts — previews with its photo and price.
+function ShareLink({ product, flash }) {
+  const url = `${APP_URL}/p/${product.id}`
+  const share = async () => {
+    if (navigator.share && window.matchMedia?.('(pointer: coarse)').matches) {
+      try { await navigator.share({ title: product.name, url }); return } catch { /* cancelled — fall back to copy */ }
+    }
+    navigator.clipboard.writeText(url).then(() => flash('Product link copied 🔗'), () => flash(url))
+  }
+  return (
+    <div style={styles.shareRow}>
+      <span style={{ fontSize: 12, color: 'var(--mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{url}</span>
+      <Button small onClick={share}>🔗 Copy link</Button>
+      <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 700 }}>View ↗</a>
+      {!product.active && <div style={{ ...ui.hint, width: '100%', color: 'var(--warning)' }}>This product is hidden — tick “Visible in shop” and save before sharing the link.</div>}
+    </div>
+  )
+}
+
 // Product photos: pick several at once (added in the order picked), first photo is the cover.
 // Tap a photo for Make cover / move / remove (works on phones); drag and drop on a computer.
 function PhotoManager({ urls, update, setUploading, flash }) {
@@ -369,6 +388,7 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
   return (
     <Modal title={p.id ? 'Edit product' : isDigital ? 'New digital product' : p.collection === STICKER_BAR.collection ? 'New sticker sheet' : 'New physical product'} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {p.id && <ShareLink product={p} flash={flash} />}
         <div style={styles.toggle}>
           {[['physical', '📦 Physical'], ['digital', '⬇️ Digital download']].map(([k, label]) => (
             <button key={k} type="button" onClick={() => setP(prev => ({ ...prev, kind: k }))}
@@ -618,6 +638,7 @@ function DiscountCodes({ codes, reload, flash }) {
 }
 
 const styles = {
+  shareRow: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)' },
   optGroup: { background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 12, padding: 10, marginBottom: 8 },
   optRemove: { background: 'none', border: 'none', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 },
   optAdd: { background: 'none', border: 'none', color: 'var(--secondary)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '8px 0 0' },

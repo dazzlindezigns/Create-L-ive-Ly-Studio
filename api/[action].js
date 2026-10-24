@@ -13,6 +13,7 @@ const routes = {
   'create-checkout':     () => import('./_handlers/create-checkout.js'),
   'proof-response':      () => import('./_handlers/proof-response.js'),
   'get-products':        () => import('./_handlers/get-products.js'),
+  'product-page':        () => import('./_handlers/product-page.js'),
   'get-settings':        () => import('./_handlers/get-settings.js'),
   'validate-discount':   () => import('./_handlers/validate-discount.js'),
   'create-shop-order':   () => import('./_handlers/create-shop-order.js'),

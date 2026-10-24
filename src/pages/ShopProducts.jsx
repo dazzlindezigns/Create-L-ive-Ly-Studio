@@ -10,12 +10,11 @@ import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 const CART_KEY = 'shop-cart-v3'
 const loadCart = () => { try { return JSON.parse(localStorage.getItem(CART_KEY)) || [] } catch { return [] } }
 
-export default function ShopProducts() {
-  const [params, setParams] = useSearchParams()
+// Products, settings and the cart (saved in this browser) — shared by the shop and single product pages.
+export function useShop() {
   const [products, setProducts] = useState(null)
   const [settings, setSettings] = useState({})
   const [cart, setCart] = useState(loadCart) // [{ key, productId, selections, quantity, format }]
-  const [cartOpen, setCartOpen] = useState(false)
   useEffect(() => {
     // If products can't load, customers still get the designed shop with "coming soon" collections.
     Promise.all([
@@ -40,6 +39,27 @@ export default function ShopProducts() {
   const stackTiers = tiersFromSettings(settings)
   const stackCount = lines.filter(l => l.product.bulk_pricing_enabled !== false).reduce((s, l) => s + l.quantity, 0)
   const count = lines.reduce((s, l) => s + l.quantity, 0)
+
+  // Returns true when the product has options (the product view stays open for another combination).
+  const addToCart = (product, selections, quantity, format) => {
+    const digital = format === 'digital'
+    const picks = digital ? null : selections
+    const key = `${product.id}|${picks ? JSON.stringify(picks) : ''}|${format}`
+    // Digital items are one copy per order — adding again doesn't stack.
+    setCart(prev => prev.some(c => c.key === key)
+      ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity } : c)
+      : [...prev, { key, productId: product.id, selections: picks, quantity: digital ? 1 : quantity, format }])
+    return Boolean(picks)
+  }
+  const setQty = (key, q) => setCart(prev => q <= 0 ? prev.filter(c => c.key !== key) : prev.map(c => c.key === key ? { ...c, quantity: q } : c))
+  const clearCart = () => setCart([])
+  return { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, clearCart }
+}
+
+export default function ShopProducts() {
+  const [params, setParams] = useSearchParams()
+  const { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, clearCart } = useShop()
+  const [cartOpen, setCartOpen] = useState(false)
   const selected = params.get('p') ? byId[params.get('p')] : null
   // Filters live in the URL (?c=labs, ?c=digital) so collection links can be shared like her Payhip ones.
   const filter = params.get('c') || 'all'
@@ -78,17 +98,10 @@ export default function ShopProducts() {
     if (window.scrollY > top + 40) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 
-  const add = (product, selections, quantity, format) => {
-    const digital = format === 'digital'
-    const picks = digital ? null : selections
-    const key = `${product.id}|${picks ? JSON.stringify(picks) : ''}|${format}`
-    // Digital items are one copy per order — adding again doesn't stack.
-    setCart(prev => prev.some(c => c.key === key)
-      ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity } : c)
-      : [...prev, { key, productId: product.id, selections: picks, quantity: digital ? 1 : quantity, format }])
+  const add = (...args) => {
     // Products with options stay open so customers can add another color/size combination;
     // everything else goes straight to the cart.
-    if (picks) return
+    if (addToCart(...args)) return
     setParam('p', null)
     setCartOpen(true)
   }
@@ -176,8 +189,7 @@ export default function ShopProducts() {
         onClose={() => setParam('p', null)} onAdd={add} disabled={!shopOpen} cartCount={count}
         onViewCart={() => { setParam('p', null); setCartOpen(true) }} />}
       {cartOpen && <CartModal lines={lines} settings={settings} stackTiers={stackTiers} shopOpen={shopOpen} onClose={() => setCartOpen(false)}
-        setQty={(key, q) => setCart(prev => q <= 0 ? prev.filter(c => c.key !== key) : prev.map(c => c.key === key ? { ...c, quantity: q } : c))}
-        onCheckedOut={() => setCart([])} />}
+        setQty={setQty} onCheckedOut={clearCart} />}
     </div>
   )
 }
@@ -229,7 +241,12 @@ function ComingSoon({ collection, onBrowse }) {
   )
 }
 
-function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAdd, disabled, cartCount, onViewCart }) {
+function ProductModal({ onClose, ...props }) {
+  return <Modal title={props.product.name} onClose={onClose}><ProductDetail {...props} /></Modal>
+}
+
+// Photos, price, format, options and Add to cart for one product (inside the shop's modal or on /p/:id).
+export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd, disabled, cartCount, onViewCart }) {
   const both = offersPhysical(product) && offersDigital(product)
   const soldOut = product.kind !== 'digital' && product.stock != null && product.stock <= 0
   const [format, setFormat] = useState(product.kind === 'digital' || (both && soldOut) ? 'digital' : 'physical')
@@ -247,7 +264,7 @@ function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAd
   const nextStack = tierFor(stackTiers, stackCount + (isDigital ? 1 : qty))
   const shipNote = Number(settings.shop_free_shipping_over) > 0 ? ` Free shipping over ${fmt(settings.shop_free_shipping_over)}.` : ''
   return (
-    <Modal title={product.name} onClose={onClose}>
+    <>
       {product.image_urls?.length > 0 && (
         <>
           <img src={product.image_urls[imgIdx]} alt="" style={{ width: '100%', borderRadius: 14, background: 'var(--card2)', aspectRatio: '1', objectFit: 'contain' }} />
@@ -343,11 +360,11 @@ function ProductModal({ product, stackCount, stackTiers, settings, onClose, onAd
       }}>
         {disabled ? 'Shop is closed' : unavailable ? 'Sold out' : `Add to cart · ${fmt(price * (isDigital ? 1 : qty))}`}
       </Button>
-    </Modal>
+    </>
   )
 }
 
-function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onCheckedOut }) {
+export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onCheckedOut, returnTo }) {
   const [step, setStep] = useState('cart')
   const [code, setCode] = useState('')
   const [discount, setDiscount] = useState(null)
@@ -413,6 +430,7 @@ function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onC
           fulfillment: hasPhysical ? f.fulfillment : 'digital',
           shippingAddress: { street: f.street, street2: f.street2, city: f.city, state: f.state, zip: f.zip },
           designFiles: files.filter(x => x.url).map(x => x.url),
+          returnTo,
         },
       })
       onCheckedOut()

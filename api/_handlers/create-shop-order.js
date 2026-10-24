@@ -86,7 +86,8 @@ export default async function handler(req, res) {
     name: `${BRAND.name} — ${productType}`,
     buyerEmail: customerEmail,
     successUrl: `${APP_URL}/quote/${order.id}?paid=1`,
-    cancelUrl: `${APP_URL}/shop/products`,
+    // Cancelling Stripe returns to the shared product page when they came from one.
+    cancelUrl: `${APP_URL}${/^\/p\/[0-9a-f-]{36}$/i.test(b.returnTo || '') ? b.returnTo : '/shop/products'}`,
   })
   await supabase.from('orders').update({ stripe_payment_url: url }).eq('id', order.id)
 

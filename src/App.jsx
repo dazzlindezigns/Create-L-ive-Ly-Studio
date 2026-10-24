@@ -13,6 +13,7 @@ import AdminProducts from './pages/AdminProducts'
 import QuoteReview from './pages/QuoteReview'
 import ProofReview from './pages/ProofReview'
 import ShopProducts from './pages/ShopProducts'
+import ProductPage from './pages/ProductPage'
 import Downloads from './pages/Downloads'
 
 const admin = (el) => <RequireAdmin>{el}</RequireAdmin>
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/proof/:orderId" element={<ProofReview />} />
         <Route path="/shop" element={<Navigate to="/shop/products" replace />} />
         <Route path="/shop/products" element={<ShopProducts />} />
+        <Route path="/p/:id" element={<ProductPage />} />
         <Route path="/downloads/:orderId" element={<Downloads />} />
 
         {/* Admin */}
