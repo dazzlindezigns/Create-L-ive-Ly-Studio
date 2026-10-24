@@ -1,5 +1,6 @@
 import { db, APP_URL, firstName } from './core.js'
 import { layout, panel, button, sendEmail, esc } from './email.js'
+import { REFUND_POLICY } from '../../src/brand.js'
 
 // How long each signed download link works. Customers can always come back to
 // /downloads/:orderId for a fresh link, so this only limits link sharing.
@@ -38,7 +39,9 @@ export async function sendDownloadEmail(order) {
       body: `<p style="margin:0;">Thank you for your purchase! Your digital file${items.length > 1 ? 's are' : ' is'} ready.</p>
         ${panel('Included', `<ul style="margin:0;padding-left:18px;font-size:14px;">${list}</ul>`)}
         ${button('Download now →', `${APP_URL}/downloads/${order.id}`)}
-        <p style="font-size:12px;color:#999;text-align:center;margin:0;">Save this email — you can come back to this link any time to download again.</p>`,
+        <p style="font-size:12px;color:#999;text-align:center;margin:0;">Save this email — you can come back to this link any time to download again.</p>
+        <p style="font-size:12px;color:#999;text-align:center;margin:8px 0 0;">${esc(REFUND_POLICY.digital)}</p>
+        <p style="font-size:13px;text-align:center;margin:14px 0 0;">Loving it? <a href="${APP_URL}/review/${order.id}">Leave a review ⭐</a></p>`,
     }),
   })
 }

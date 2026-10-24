@@ -140,6 +140,12 @@ export default function QuoteReview() {
         </Link>
       )}
 
+      {(order.status === 'completed' || (order.fulfillment === 'digital' && Number(order.amount_paid) > 0)) && (
+        <Link to={`/review/${order.id}`} style={{ textDecoration: 'none' }}>
+          <Button block variant="ghost">⭐ How did we do? Leave a review</Button>
+        </Link>
+      )}
+
       {order.proof_status === 'sent' && (
         <Link to={`/proof/${order.id}`} style={{ textDecoration: 'none' }}>
           <Button block variant="secondary">Your proof is ready — review it →</Button>

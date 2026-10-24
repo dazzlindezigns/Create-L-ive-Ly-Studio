@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
@@ -33,6 +34,7 @@ const toForm = (p) => ({ ...p, option_groups: formGroups(p), series: p.series ||
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
 export default function AdminProducts() {
+  const navigate = useNavigate()
   const [products, setProducts] = useState(null)
   const [codes, setCodes] = useState(null)
   const [settings, setSettings] = useState({})
@@ -85,6 +87,10 @@ export default function AdminProducts() {
         <div style={{ ...ui.card, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 13, color: 'var(--mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{APP_URL}/shop/products</span>
           <Button small variant="ghost" onClick={() => navigator.clipboard.writeText(`${APP_URL}/shop/products`).then(() => flash('Shop link copied'))}>Copy</Button>
+        </div>
+        <div style={{ ...ui.row, gap: 8 }}>
+          <Button small variant="ghost" onClick={() => navigate('/dashboard/partners')}>🤝 Partners</Button>
+          <Button small variant="ghost" onClick={() => navigate('/dashboard/inbox#reviews')}>⭐ Reviews</Button>
         </div>
 
         {groups.map(g => (

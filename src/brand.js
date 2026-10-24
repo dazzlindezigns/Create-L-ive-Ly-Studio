@@ -39,6 +39,8 @@ export const COLORS = {
   success: '#2F9E62',
   warning: '#C7802B',
   danger: '#C8414B',
+  star: '#E8A33D',        // review stars
+  starOff: '#DDD2D5',     // empty review stars
 }
 
 export const FONTS = {
@@ -131,11 +133,19 @@ export const PRODUCT_TYPES = [
 // Defaults — she edits them in Shop → Products (saved in settings.stack_save_tiers).
 export const STACK_TIERS = [{ min: 3, pct: 10 }, { min: 5, pct: 15 }, { min: 8, pct: 20 }]
 
+// Refunds: only ready-made physical shop items can be refunded. Shown at checkout, on product
+// pages, receipts and download emails so it's clear before anyone pays.
+export const REFUND_POLICY = {
+  digital: 'Digital downloads are final sale — no refunds or exchanges.',
+  custom: 'Custom orders are made just for you and are final sale — no refunds.',
+  physical: 'Only ready-made physical items from the shop can be refunded.',
+}
+
 export const QUOTE_TERMS = [
   'Your order goes into production once the deposit (or full payment) is received.',
   'Digital proofs or mockups are sent before production. We start making your order only after you approve.',
   'Two rounds of proof revisions are included. Additional revisions or design changes may add cost.',
-  'Because every order is custom, deposits are non-refundable once design work has started.',
+  'Custom orders are made just for you, so they’re final sale — payments and deposits are non-refundable.',
   'Turnaround times start after proof approval. Rush requests are not guaranteed unless confirmed in writing.',
   'Colors can vary slightly between screens and finished pieces, and 3D-printed items may show small layer lines — that’s part of the handmade process.',
   'You confirm you own or have permission to use any artwork, logos, or images you submit.',

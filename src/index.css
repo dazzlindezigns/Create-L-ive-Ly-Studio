@@ -14,6 +14,8 @@
   --success: #2F9E62;
   --warning: #C7802B;
   --danger: #C8414B;
+  --star: #E8A33D;
+  --starOff: #DDD2D5;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

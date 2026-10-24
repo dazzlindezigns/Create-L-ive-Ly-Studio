@@ -19,7 +19,8 @@ const STAGES = {
   completed: (o) => ({
     subject: `Thank you, ${firstName(o.customer_name)}! 💕`,
     heading: 'Thank you for your order',
-    body: `Thank you so much for trusting ${esc(BRAND.name)} with your <strong>${esc(o.product_type)}</strong>. We hope it brings a smile every time you see it. If you love it, we'd be so grateful if you shared a photo and tagged us!`,
+    body: `Thank you so much for trusting ${esc(BRAND.name)} with your <strong>${esc(o.product_type)}</strong>. We hope it brings a smile every time you see it. Would you take a minute to tell us how we did? It helps our small business so much.`,
+    cta: ['⭐ Leave a review', `${APP_URL}/review/${o.id}`],
   }),
   declined: (o) => ({
     subject: `About your order request, ${firstName(o.customer_name)}`,

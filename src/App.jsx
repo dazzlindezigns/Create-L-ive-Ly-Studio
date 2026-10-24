@@ -15,6 +15,9 @@ import ProofReview from './pages/ProofReview'
 import ShopProducts from './pages/ShopProducts'
 import ProductPage from './pages/ProductPage'
 import Downloads from './pages/Downloads'
+import Partners from './pages/Partners'
+import PartnerPage from './pages/PartnerPage'
+import ReviewPage from './pages/ReviewPage'
 
 const admin = (el) => <RequireAdmin>{el}</RequireAdmin>
 
@@ -33,6 +36,8 @@ export default function App() {
         <Route path="/shop/products" element={<ShopProducts />} />
         <Route path="/p/:id" element={<ProductPage />} />
         <Route path="/downloads/:orderId" element={<Downloads />} />
+        <Route path="/partner/:token" element={<PartnerPage />} />
+        <Route path="/review/:orderId" element={<ReviewPage />} />
 
         {/* Admin */}
         <Route path="/login" element={<Login />} />
@@ -42,6 +47,7 @@ export default function App() {
         <Route path="/dashboard/inbox" element={admin(<Inbox />)} />
         <Route path="/calculator" element={<Navigate to="/dashboard/calculator" replace />} />
         <Route path="/dashboard/products" element={admin(<AdminProducts />)} />
+        <Route path="/dashboard/partners" element={admin(<Partners />)} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

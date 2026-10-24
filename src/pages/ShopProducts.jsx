@@ -2,10 +2,12 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { BRAND, COLLECTIONS, STICKER_BAR } from '../brand'
+import { BRAND, COLLECTIONS, STICKER_BAR, REFUND_POLICY } from '../brand'
 import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions } from '../lib/cart'
 import { ui, Button, Field, Input, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
+import Stars from '../components/Stars'
+import { currentRef } from '../lib/ref'
 
 const CART_KEY = 'shop-cart-v3'
 // Some option choices cost more (e.g. bigger sizes), so the listed price is a starting price.
@@ -164,6 +166,7 @@ export default function ShopProducts() {
                 <div style={{ padding: '10px 12px 14px', textAlign: 'left' }}>
                   {p.series && <div style={styles.series}>{p.series} collection</div>}
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
+                  {p.rating && <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, fontSize: 12, color: 'var(--muted)' }}><Stars value={p.rating.avg} size={12} /> {p.rating.count}</div>}
                   <div style={{ fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>
                     {both || priceVaries(p) ? `from ${fmt(both ? Math.min(p.price, p.digital_price) : p.price)}` : fmt(p.price)}
                   </div>
@@ -283,6 +286,11 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
       )}
       {product.series && <div style={{ ...styles.series, marginTop: 12 }}>{product.series} collection</div>}
       <div style={{ fontWeight: 800, fontSize: 22, color: 'var(--primary)', margin: '6px 0 6px' }}>{fmt(price)}</div>
+      {product.rating && (
+        <a href="#reviews" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--mid)', textDecoration: 'none', marginBottom: 8 }}>
+          <Stars value={product.rating.avg} size={15} /> {product.rating.avg.toFixed(1)} · {product.rating.count} review{product.rating.count === 1 ? '' : 's'}
+        </a>
+      )}
       {product.description && <p style={{ whiteSpace: 'pre-wrap', color: 'var(--mid)', fontSize: 14, lineHeight: 1.6 }}>{product.description}</p>}
 
       {both && (
@@ -310,6 +318,7 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
           ⬇️ <strong>Instant digital download</strong>
           {product.digital_file_name && <> · {product.digital_file_name.split('.').pop().toUpperCase()} file</>}
           <div style={{ ...ui.hint, marginTop: 4 }}>Your download link is emailed as soon as payment goes through. Nothing is shipped.</div>
+          <div style={{ ...ui.hint, marginTop: 4, fontWeight: 600, color: 'var(--mid)' }}>{REFUND_POLICY.digital}</div>
         </div>
       ) : (
       <>
@@ -366,7 +375,30 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
       }}>
         {disabled ? 'Shop is closed' : unavailable ? 'Sold out' : `Add to cart · ${fmt(price * (isDigital ? 1 : qty))}`}
       </Button>
+      {product.rating && <ProductReviews productId={product.id} />}
     </>
+  )
+}
+
+// Verified-buyer reviews for one product (hidden ones never reach the browser).
+function ProductReviews({ productId }) {
+  const [reviews, setReviews] = useState(null)
+  useEffect(() => { api(`get-reviews?productId=${productId}`).then(setReviews).catch(() => setReviews([])) }, [productId])
+  if (!reviews?.length) return null
+  return (
+    <section id="reviews" style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+      <div style={ui.label}>Reviews</div>
+      {reviews.map((r, i) => (
+        <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Stars value={r.rating} size={14} />
+            <span style={{ fontSize: 13, fontWeight: 700 }}>{r.name || 'Customer'}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--success)' }}>✓ Verified buyer</span>
+          </div>
+          {r.body && <p style={{ fontSize: 14, color: 'var(--mid)', lineHeight: 1.5, marginTop: 4, whiteSpace: 'pre-wrap' }}>{r.body}</p>}
+        </div>
+      ))}
+    </section>
   )
 }
 
@@ -379,6 +411,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
   const [f, setF] = useState({ name: '', email: '', phone: '', fulfillment: 'pickup', street: '', street2: '', city: '', state: '', zip: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [finalSale, setFinalSale] = useState(false)
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }))
 
   // Display math mirrors api/_lib/pricing.js; the server recalculates before charging.
@@ -418,6 +451,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
           fulfillment: hasPhysical ? f.fulfillment : 'digital',
           shippingAddress: { street: f.street, street2: f.street2, city: f.city, state: f.state, zip: f.zip },
           returnTo,
+          ref: currentRef(),
         },
       })
       onCheckedOut()
@@ -513,6 +547,12 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
               Shop items are made exactly as shown — we can’t add names, colors or other changes to shop orders.
               Want something personalized? <Link to="/custom">Request a custom order →</Link>
             </div>
+          )}
+          {hasDigital && (
+            <label style={{ ...styles.asShown, display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+              <input type="checkbox" required checked={finalSale} onChange={e => setFinalSale(e.target.checked)} style={{ marginTop: 3 }} />
+              <span>I understand <strong>digital downloads are final sale</strong> — no refunds or exchanges.{hasPhysical ? ` ${REFUND_POLICY.physical}` : ''}</span>
+            </label>
           )}
           {totals}
           {error && <div style={ui.error}>{error}</div>}

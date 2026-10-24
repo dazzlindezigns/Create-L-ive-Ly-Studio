@@ -26,12 +26,17 @@ const LINKS = [
   { path: '/dashboard/calculator', label: 'Calculator', short: 'Quote', Icon: IconCalc },
 ]
 
-// Unread customer replies + emails that didn't arrive, kept live for the Inbox badge.
+// Unread customer replies, emails that didn't arrive, and new reviews/feedback — the Inbox badge.
 function useUnread() {
   const [n, setN] = useState(0)
   useEffect(() => {
-    const load = () => supabase.from('email_log').select('id', { count: 'exact', head: true })
-      .is('read_at', null).or('direction.eq.in,status.in.(bounced,complained,failed)').then(({ count }) => setN(count || 0))
+    // New reviews and shopping feedback count too (0 if those tables aren't set up yet).
+    const count = (q) => q.then(({ count }) => count || 0, () => 0)
+    const load = () => Promise.all([
+      count(supabase.from('email_log').select('id', { count: 'exact', head: true }).is('read_at', null).or('direction.eq.in,status.in.(bounced,complained,failed)')),
+      count(supabase.from('reviews').select('id', { count: 'exact', head: true }).is('read_at', null)),
+      count(supabase.from('feedback').select('id', { count: 'exact', head: true }).is('read_at', null)),
+    ]).then(ns => setN(ns.reduce((a, b) => a + b, 0)))
     load()
     const ch = supabase.channel('nav-unread')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'email_log' }, load).subscribe()

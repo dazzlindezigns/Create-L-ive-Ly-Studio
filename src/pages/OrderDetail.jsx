@@ -5,6 +5,7 @@ import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2, paymentOptions, depositFor, refundable } from '../lib/money'
 import { STATUS, orderFlow, statusesFor, stepsFor, nextStep } from '../lib/status'
 import { trackingUrl } from '../../api/_lib/shipping.js'
+import { commissionFor } from '../lib/affiliates'
 import { BRAND, PRODUCT_TYPES } from '../brand'
 import Nav from '../components/Nav'
 import ShipModal from '../components/ShipModal'
@@ -260,6 +261,7 @@ function ItemsSection({ order, payments, flash, onRecordPayment, onRefund, sendS
           : <>Not paid yet</>}
       </div>
       <Refunded order={order} />
+      <PartnerTag order={order} />
       <div style={{ ...ui.row, marginTop: 12 }}>
         {paid ? (
           <>
@@ -513,6 +515,22 @@ function QuoteSection({ order, payments, update, flash, reload, sendStage, onCop
   )
 }
 
+// ── Partner who sent this order (affiliate link) ────────────────────────────
+function PartnerTag({ order }) {
+  const [name, setName] = useState(null)
+  useEffect(() => {
+    if (!order.affiliate_id) return
+    supabase.from('affiliates').select('name').eq('id', order.affiliate_id).maybeSingle().then(({ data }) => setName(data?.name || 'a partner'))
+  }, [order.affiliate_id])
+  if (!order.affiliate_id || !name) return null
+  const c = commissionFor(order)
+  return (
+    <div style={{ ...ui.hint, fontSize: 13, marginTop: 8 }}>
+      🤝 Came from <strong>{name}</strong>’s link{c.state !== 'void' && <> · they earn {fmt(c.amount)}{c.state === 'paid' ? ' (paid)' : c.state === 'pending' ? ' once it’s complete' : ''}</>}
+    </div>
+  )
+}
+
 // ── Refunds ────────────────────────────────────────────────────────────────
 function Refunded({ order }) {
   if (!(Number(order.refunded_amount) > 0)) return null
@@ -521,6 +539,16 @@ function Refunded({ order }) {
       ↩️ Refunded {fmt(order.refunded_amount)}{order.refunded_at && ` · ${new Date(order.refunded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
     </div>
   )
+}
+
+// Her policy: only ready-made physical shop items are refundable. The app still lets her refund
+// anything (her call), but reminds her what the customer agreed to.
+function finalSaleNote(order) {
+  if (order.source !== 'shop') return 'Custom orders are final sale under your terms — refund only if you choose to.'
+  const lines = order.shop_cart || []
+  if (lines.length && lines.every(l => l.kind === 'digital')) return 'Digital downloads are final sale — the customer agreed at checkout. Refund only if you choose to.'
+  if (lines.some(l => l.kind === 'digital')) return 'Includes digital downloads, which are final sale. Consider refunding only the physical items (use Partial).'
+  return null
 }
 
 function RefundModal({ order, payments, firstName, onClose, onDone }) {
@@ -556,6 +584,7 @@ function RefundModal({ order, payments, firstName, onClose, onDone }) {
             <button key={k} type="button" onClick={() => setMode(k)} style={{ ...styles.toggleBtn, ...(mode === k ? styles.toggleOn : {}) }}>{label}</button>
           ))}
         </div>
+        {finalSaleNote(order) && <div style={{ ...ui.hint, fontSize: 13, color: 'var(--warning)', fontWeight: 600 }}>{finalSaleNote(order)}</div>}
         {mode === 'partial' && (
           <Field label="Amount to refund ($)" hint={`Up to ${fmt(avail.total)}`}>
             <Input type="number" step="0.01" min="0" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} autoFocus />

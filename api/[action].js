@@ -20,6 +20,11 @@ const routes = {
   'push-config':         () => import('./_handlers/push-config.js'),
   'get-downloads':       () => import('./_handlers/get-downloads.js'),
   'health':              () => import('./_handlers/health.js'),
+  'track-ref':           () => import('./_handlers/track-ref.js'),
+  'get-partner':         () => import('./_handlers/get-partner.js'),
+  'get-review':          () => import('./_handlers/get-review.js'),
+  'submit-review':       () => import('./_handlers/submit-review.js'),
+  'get-reviews':         () => import('./_handlers/get-reviews.js'),
   // Admin (require a signed-in admin)
   'send-quote':          () => import('./_handlers/send-quote.js'),
   'send-proof':          () => import('./_handlers/send-proof.js'),

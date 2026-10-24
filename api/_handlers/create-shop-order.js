@@ -5,7 +5,8 @@ import { layout, rows, button, sendEmail, emailMaker, esc } from '../_lib/email.
 import { createCheckoutSession } from '../_lib/stripe.js'
 import { notifyAdmins } from '../_lib/push.js'
 import { cleanAddress } from '../_lib/validate.js'
-import { fmt } from '../../src/lib/money.js'
+import { fmt, round2 } from '../../src/lib/money.js'
+import { cleanCode } from '../../src/lib/affiliates.js'
 import { tiersFromSettings } from '../../src/lib/cart.js'
 
 export default async function handler(req, res) {
@@ -49,6 +50,15 @@ export default async function handler(req, res) {
   const productType = cart.lines.length === 1 ? cart.lines[0].productName : `Shop order (${cart.lines.length} items)`
   // Shop items are made as shown: checkout takes no notes or design files (custom work goes through /custom).
 
+  // Partner link (?ref=CODE, remembered in the browser): 25% (or the partner's rate) of the items after
+  // discounts, before shipping. Partners don't earn on their own orders.
+  let partner = null
+  const refCode = cleanCode(b.ref)
+  if (refCode) {
+    const { data } = await supabase.from('affiliates').select('id, email, rate').eq('code', refCode).eq('active', true).maybeSingle()
+    if (data && String(data.email || '').toLowerCase() !== customerEmail) partner = data
+  }
+
   const { data: order, error } = await supabase.from('orders').insert({
     product_type: productType,
     description: lines.join('\n'),
@@ -70,6 +80,7 @@ export default async function handler(req, res) {
     quote_breakdown: {
       lines: cart.lines.map(l => ({ description: `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' — digital download' : ''}`, qty: l.quantity, unitPrice: l.unitPrice })),
     },
+    ...(partner ? { affiliate_id: partner.id, commission: round2(cart.merchandise * (Number(partner.rate) || 0) / 100) } : {}),
     customer_signature: customerName,
     terms_agreed_at: new Date().toISOString(),
   }).select().single()

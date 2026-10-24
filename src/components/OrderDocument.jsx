@@ -1,4 +1,4 @@
-import { BRAND, QUOTE_TERMS } from '../brand'
+import { BRAND, QUOTE_TERMS, REFUND_POLICY } from '../brand'
 import { fmt, paymentOptions } from '../lib/money'
 
 // Printable quote / invoice / receipt. Hidden on screen (.print-only); the browser's
@@ -94,6 +94,11 @@ export default function OrderDocument({ order }) {
         </div>
       )}
 
+      <div style={{ marginTop: 18, fontSize: 11, color: '#777', lineHeight: 1.6 }}>
+        {order.source === 'shop'
+          ? <>{(order.shop_cart || []).some(l => l.kind === 'digital') && <>{REFUND_POLICY.digital} </>}{(order.shop_cart || []).some(l => l.kind !== 'digital') && REFUND_POLICY.physical}</>
+          : REFUND_POLICY.custom}
+      </div>
       <div style={s.foot}>Thank you for supporting {BRAND.name} 💕</div>
     </div>
   )
