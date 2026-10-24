@@ -5,6 +5,7 @@ import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE, PARTNER_PROGRAM } from '../brand'
 import { normalizeTiers, tiersFromSettings, optionGroups } from '../lib/cart'
+import { cleanSets, groupFromSet, applySet } from '../lib/optionSets'
 import Nav from '../components/Nav'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash } from '../components/ui'
 
@@ -31,11 +32,15 @@ const formGroups = (p) => {
   return groups.map((g, j) => j !== i ? g : { ...g, ownPrices: true, choices: g.choices.map(c => ({ ...c, price: round2(Number(p.price) + c.price) })) })
 }
 const toForm = (p) => ({ ...p, option_groups: formGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
+const ALL_PREVIEW = 4 // products shown per collection on the "All" view
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
 export default function AdminProducts() {
   const navigate = useNavigate()
-  const [panel, setPanel] = useState(null) // 'settings' | 'codes' | 'stack'
+  const [panel, setPanel] = useState(null) // 'settings' | 'codes' | 'stack' | 'sets'
+  const [q, setQ] = useState('')
+  const [view, setView] = useState(() => { try { return sessionStorage.getItem('products-view') || 'all' } catch { return 'all' } })
+  const pickView = (key) => { setView(key); try { sessionStorage.setItem('products-view', key) } catch { /* ignore */ } window.scrollTo(0, 0) }
   const [products, setProducts] = useState(null)
   const [codes, setCodes] = useState(null)
   const [settings, setSettings] = useState({})
@@ -59,6 +64,26 @@ export default function AdminProducts() {
     const { error } = await supabase.from('settings').upsert({ key, value })
     if (error) return flash(error.message, 'error')
     setSettings(s => ({ ...s, [key]: value })); flash('Saved')
+  }
+
+  const optionSets = cleanSets(settings.option_sets)
+  const saveOptionSets = async (list, msg = 'Saved') => {
+    const { error } = await supabase.from('settings').upsert({ key: 'option_sets', value: list })
+    if (error) { flash(error.message, 'error'); return false }
+    setSettings(s => ({ ...s, option_sets: list })); flash(msg); return true
+  }
+  // After a set changes: offer to update every product that uses it (prices they set per product are kept).
+  const pushSet = async (set) => {
+    const using = products.filter(p => (p.option_groups || []).some(g => g.set === set.id))
+    if (!using.length || !confirm(`Update ${using.length} product${using.length > 1 ? 's' : ''} that use “${set.title}”?`)) return
+    let n = 0
+    for (const p of using) {
+      const next = applySet(p.option_groups, set)
+      if (!next) continue
+      const { error } = await supabase.from('products').update({ option_groups: next }).eq('id', p.id)
+      if (error) flash(`${p.name}: ${error.message}`, 'error'); else n++
+    }
+    flash(`Updated ${n} product${n === 1 ? '' : 's'}`); load()
   }
 
   // Products grouped under their collection; anything without one goes last.
@@ -90,26 +115,57 @@ export default function AdminProducts() {
           <button onClick={() => setPanel('settings')} style={styles.pill}>⚙️ Shop settings</button>
           <button onClick={() => setPanel('codes')} style={styles.pill}>🏷 Discount codes{codes?.filter(c => c.active).length ? ` · ${codes.filter(c => c.active).length}` : ''}</button>
           <button onClick={() => setPanel('stack')} style={styles.pill}>📚 Stack & Save</button>
+          <button onClick={() => setPanel('sets')} style={styles.pill}>🎨 Option sets{optionSets.length ? ` · ${optionSets.length}` : ''}</button>
           <button onClick={() => navigate('/dashboard/partners')} style={styles.pill}>{PARTNER_PROGRAM.icon} {PARTNER_PROGRAM.short}</button>
           <button onClick={() => navigate('/dashboard/inbox#reviews')} style={styles.pill}>⭐ Reviews</button>
           <button onClick={() => navigator.clipboard.writeText(`${APP_URL}/shop/products`).then(() => flash('Shop link copied'))} style={styles.pill}>🔗 Copy shop link</button>
         </div>
 
-        {groups.map(g => (
-          <section key={g.key || 'none'}>
-            <div style={styles.groupHead}>
-              <h2 style={{ ...ui.h2, marginBottom: 0 }}>{g.name} <span style={styles.count}>{g.items.length}</span></h2>
-              <button onClick={() => setEditing(blankFor(g.key))} style={styles.groupAdd}>+ Add</button>
+        {/* Find products fast: search, or look at one collection at a time. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Input type="search" placeholder={`Search ${products.length} product${products.length === 1 ? '' : 's'}…`} value={q} onChange={e => setQ(e.target.value)} />
+          {!q && (
+            <div className="scroll-x" style={{ display: 'flex', gap: 6 }}>
+              {[{ key: 'all', name: 'All', items: products }, ...groups].map(g => (
+                <button key={g.key || 'none'} onClick={() => pickView(g.key)} style={{ ...styles.viewPill, ...(view === g.key ? styles.viewPillOn : {}) }}>
+                  {g.name} <span style={{ opacity: 0.7 }}>{g.items.length}</span>
+                </button>
+              ))}
             </div>
-            {g.items.length === 0 ? (
-              <div style={styles.emptyGroup}>Nothing here yet.</div>
-            ) : (
-              <div style={styles.list}>
-                {g.items.map(p => <ProductRow key={p.id} p={p} onClick={() => setEditing(toForm(p))} />)}
+          )}
+        </div>
+
+        {q ? (
+          (() => {
+            const hits = products.filter(p => [p.name, p.series, p.badge, p.description].some(v => String(v || '').toLowerCase().includes(q.trim().toLowerCase())))
+            return hits.length
+              ? <div style={styles.list}>{hits.map(p => <ProductRow key={p.id} p={p} onClick={() => setEditing(toForm(p))} />)}</div>
+              : <div style={styles.emptyGroup}>No products match “{q}”.</div>
+          })()
+        ) : view === 'all' && !products.length ? (
+          <div style={styles.emptyGroup}>No products yet — tap + Physical, + Digital or + Sticker sheet to add your first one.</div>
+        ) : groups.filter(g => view === 'all' ? g.items.length > 0 : g.key === view).map(g => {
+          // "All" shows a few from each collection; tap the collection to see the rest.
+          const preview = view === 'all' ? g.items.slice(0, ALL_PREVIEW) : g.items
+          return (
+            <section key={g.key || 'none'}>
+              <div style={styles.groupHead}>
+                <h2 style={{ ...ui.h2, marginBottom: 0 }}>{g.name} <span style={styles.count}>{g.items.length}</span></h2>
+                <button onClick={() => setEditing(blankFor(g.key))} style={styles.groupAdd}>+ Add</button>
               </div>
-            )}
-          </section>
-        ))}
+              {g.items.length === 0 ? (
+                <div style={styles.emptyGroup}>Nothing here yet.</div>
+              ) : (
+                <div style={styles.list}>
+                  {preview.map(p => <ProductRow key={p.id} p={p} onClick={() => setEditing(toForm(p))} />)}
+                  {preview.length < g.items.length && (
+                    <button onClick={() => pickView(g.key)} style={styles.seeAll}>See all {g.items.length} in {g.name} →</button>
+                  )}
+                </div>
+              )}
+            </section>
+          )
+        })}
 
       </div>
 
@@ -128,12 +184,17 @@ export default function AdminProducts() {
           <DiscountCodes codes={codes} reload={load} flash={flash} />
         </Modal>
       )}
+      {panel === 'sets' && (
+        <Modal title="Option sets" onClose={() => setPanel(null)}>
+          <OptionSets sets={optionSets} products={products} onSave={saveOptionSets} onPush={pushSet} />
+        </Modal>
+      )}
       {panel === 'stack' && (
         <Modal title="Stack & Save" onClose={() => setPanel(null)}>
           <StackTiers key={JSON.stringify(tiersFromSettings(settings))} value={tiersFromSettings(settings)} onSave={v => saveSetting('stack_save_tiers', v)} />
         </Modal>
       )}
-      {editing && <ProductModal product={editing} seriesList={[...new Set(products.map(x => x.series).filter(Boolean))]} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
+      {editing && <ProductModal product={editing} optionSets={optionSets} onSaveSet={(set) => saveOptionSets([...optionSets, set], `“${set.title}” saved — add it to any product`)} seriesList={[...new Set(products.map(x => x.series).filter(Boolean))]} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
       {toast}
       <Nav />
     </div>
@@ -142,7 +203,7 @@ export default function AdminProducts() {
 
 // Option groups (Size, Color, Sticker style…). Customers pick one choice per group on the
 // product page; a choice's price is added to (or taken off) the base price.
-function OptionGroupsEditor({ groups, onChange }) {
+function OptionGroupsEditor({ groups, onChange, sets = [], onSaveSet }) {
   const setGroup = (i, patch) => onChange(groups.map((g, j) => j === i ? { ...g, ...patch } : g))
   const setChoice = (i, k, patch) => setGroup(i, { choices: groups[i].choices.map((c, j) => j === k ? { ...c, ...patch } : c) })
   // One group can carry the prices (e.g. Size: Small $10 / Large $15); the rest are just names.
@@ -159,6 +220,9 @@ function OptionGroupsEditor({ groups, onChange }) {
             <Input value={g.name} placeholder="Option name (e.g. Size)" onChange={e => setGroup(i, { name: e.target.value })} style={{ fontWeight: 700 }} />
             <button type="button" onClick={() => onChange(groups.filter((_, j) => j !== i))} style={styles.optRemove}>Remove</button>
           </div>
+          {g.set && sets.some(x => x.id === g.set) && (
+            <div style={{ ...ui.hint, marginTop: 4 }}>🔗 From your “{sets.find(x => x.id === g.set).title}” set — editing that set (Shop → Option sets) updates this product too.</div>
+          )}
           {g.choices.map((c, k) => (
             <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
               <Input value={c.label} placeholder="Choice" onChange={e => setChoice(i, k, { label: e.target.value })} style={{ flex: 2, padding: '9px 10px', fontSize: 14 }} />
@@ -177,8 +241,24 @@ function OptionGroupsEditor({ groups, onChange }) {
               <input type="checkbox" checked={Boolean(g.ownPrices)} onChange={e => setOwnPrices(i, e.target.checked)} /> Each choice has its own price
             </label>
           </div>
+          {onSaveSet && !(g.set && sets.some(x => x.id === g.set)) && g.choices.some(c => c.label.trim()) && (
+            <button type="button" style={styles.optAdd} onClick={async () => {
+              const title = window.prompt('Name this set so you can reuse it (e.g. Tumbler colors):', g.name)
+              if (!title?.trim()) return
+              const set = { id: crypto.randomUUID(), title: title.trim(), name: g.name.trim() || 'Option',
+                choices: g.choices.filter(c => c.label.trim()).map(c => ({ label: c.label.trim(), price: g.ownPrices ? 0 : Number(c.price) || 0 })) }
+              if (await onSaveSet(set)) setGroup(i, { set: set.id })
+            }}>⭐ Save as reusable set</button>
+          )}
         </div>
       ))}
+      {sets.filter(x => !groups.some(g => g.set === x.id)).length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4, marginBottom: 6 }}>
+          {sets.filter(x => !groups.some(g => g.set === x.id)).map(x => (
+            <button key={x.id} type="button" onClick={() => onChange([...groups, groupFromSet(x)])} style={{ ...styles.chip, borderColor: 'var(--primary)', color: 'var(--primary)' }}>+ {x.title}</button>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
         {OPTION_PRESETS.filter(([label]) => !groups.some(g => g.name === label || (label === 'Sticker style' && g.name === 'Style'))).map(([label, make]) => (
           <button key={label} type="button" onClick={() => onChange([...groups, make()])} style={styles.chip}>+ {label}</button>
@@ -352,7 +432,7 @@ function SettingField({ label, value, onSave, type = 'text', multiline, template
   )
 }
 
-function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
+function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets = [], onSaveSet }) {
   const [p, setP] = useState(product)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -507,7 +587,7 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash }) {
           </div>
         )}
         {!isDigital && (
-          <OptionGroupsEditor groups={p.option_groups || []} onChange={groups => setP(prev => ({ ...prev, option_groups: groups }))} />
+          <OptionGroupsEditor groups={p.option_groups || []} onChange={groups => setP(prev => ({ ...prev, option_groups: groups }))} sets={optionSets} onSaveSet={onSaveSet} />
         )}
         <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> Counts toward Stack & Save</label>
         <label style={styles.check}><input type="checkbox" checked={p.active} onChange={set('active')} /> Visible in shop</label>
@@ -648,6 +728,68 @@ function ImageStudio({ p, setP, flash }) {
   )
 }
 
+// Saved option sets: build "Tumbler colors" once, add it to any product in one tap.
+function OptionSets({ sets, products, onSave, onPush }) {
+  const [form, setForm] = useState(null) // set being edited/created
+  const used = (id) => products.filter(p => (p.option_groups || []).some(g => g.set === id)).length
+  const setChoice = (k, patch) => setForm(f => ({ ...f, choices: f.choices.map((c, j) => j === k ? { ...c, ...patch } : c) }))
+
+  const save = async () => {
+    const set = { ...form, title: form.title.trim(), name: form.name.trim(), choices: form.choices.map(c => ({ label: c.label.trim(), price: Number(c.price) || 0 })).filter(c => c.label) }
+    if (!set.title || !set.name || !set.choices.length) return alert('Add a set name, what customers see, and at least one choice')
+    const list = sets.some(x => x.id === set.id) ? sets.map(x => x.id === set.id ? set : x) : [...sets, set]
+    if (await onSave(list, `“${set.title}” saved`)) { setForm(null); await onPush(set) }
+  }
+  const remove = async (x) => {
+    if (!confirm(`Delete the “${x.title}” set? Products keep the options they already have.`)) return
+    await onSave(sets.filter(y => y.id !== x.id), 'Set deleted')
+  }
+
+  if (form) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={ui.row}>
+        <Field label="Set name (just for you)"><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Tumbler colors" autoFocus /></Field>
+        <Field label="Customers see"><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Color" /></Field>
+      </div>
+      <div style={ui.label}>Choices</div>
+      {form.choices.map((c, k) => (
+        <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Input value={c.label} placeholder="Choice" onChange={e => setChoice(k, { label: e.target.value })} style={{ flex: 2, padding: '9px 10px', fontSize: 14 }} />
+          <Input type="number" step="0.01" inputMode="decimal" value={c.price || ''} placeholder="+$0" title="Extra cost for this choice (optional)"
+            onChange={e => setChoice(k, { price: e.target.value })} style={{ flex: 1, minWidth: 70, padding: '9px 10px', fontSize: 14 }} />
+          <button type="button" onClick={() => setForm(f => ({ ...f, choices: f.choices.filter((_, j) => j !== k) }))} style={{ ...styles.x, position: 'static', flexShrink: 0 }} aria-label="Remove choice">×</button>
+        </div>
+      ))}
+      <button type="button" onClick={() => setForm(f => ({ ...f, choices: [...f.choices, choice('')] }))} style={{ ...styles.optAdd, textAlign: 'left' }}>+ Add choice</button>
+      {used(form.id) > 0 && <div style={ui.hint}>Used on {used(form.id)} product{used(form.id) > 1 ? 's' : ''} — you’ll be asked to update them. Prices you set on a product stay as they are.</div>}
+      <div style={ui.row}>
+        <Button small onClick={save}>Save set</Button>
+        <Button small variant="ghost" onClick={() => setForm(null)}>Cancel</Button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <p style={{ ...ui.muted, marginBottom: 10 }}>Make a list of options once (colors, sizes…) and add it to any product in one tap. Change it here and the products using it can update too.</p>
+      <Button small onClick={() => setForm({ id: crypto.randomUUID(), title: '', name: '', choices: [choice(''), choice('')] })}>+ New set</Button>
+      {sets.map(x => (
+        <div key={x.id} style={styles.codeRow}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700 }}>{x.title}</div>
+            <div style={{ ...ui.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}: {x.choices.map(c => c.label).join(', ')}</div>
+            <div style={ui.hint}>On {used(x.id)} product{used(x.id) === 1 ? '' : 's'}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <Button small variant="ghost" onClick={() => setForm({ ...x, choices: x.choices.map(c => ({ ...c })) })}>Edit</Button>
+            <Button small variant="ghost" onClick={() => remove(x)}>Delete</Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const BLANK_CODE = { code: '', discount_type: 'percent', discount_value: '', min_order: '', max_uses: '', expires_at: '' }
 const codeForm = (c) => ({
   code: c.code, discount_type: c.discount_type, discount_value: c.discount_value ?? '', min_order: c.min_order ?? '',
@@ -760,6 +902,9 @@ const styles = {
   chip: { padding: '6px 11px', borderRadius: 50, border: '1.5px solid var(--border)', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   chipOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
   pills: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  viewPill: { padding: '7px 13px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 700, color: 'var(--mid)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
+  viewPillOn: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
+  seeAll: { width: '100%', padding: '12px 14px', border: 'none', background: 'var(--card2)', color: 'var(--secondary)', fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left' },
   pill: { padding: '8px 14px', borderRadius: 50, border: '1.5px solid var(--border)', background: 'var(--card)', fontSize: 13, fontWeight: 600, color: 'var(--mid)', cursor: 'pointer', whiteSpace: 'nowrap' },
   codeRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' },
 }

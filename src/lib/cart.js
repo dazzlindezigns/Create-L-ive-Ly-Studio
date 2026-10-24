@@ -35,6 +35,8 @@ export function optionGroups(p) {
     : p.options?.length ? [{ name: 'Option', choices: p.options.map(label => ({ label, price: 0 })) }] : []
   return raw
     .map(g => ({
+      // `set` links a group to a saved option set (admin), so editing the set can update every product using it.
+      ...(g?.set ? { set: String(g.set).slice(0, 64) } : {}),
       name: String(g?.name || 'Option').trim().slice(0, 40),
       choices: (Array.isArray(g?.choices) ? g.choices : [])
         .map(c => ({ label: String(c?.label || '').trim().slice(0, 60), price: round2(c?.price) }))
