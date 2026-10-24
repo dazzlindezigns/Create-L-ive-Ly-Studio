@@ -4,17 +4,15 @@
 //    Inbox, and she gets a push + email alert, so she knows a customer didn't get it.
 // In Resend: Webhooks → add https://<domain>/api/resend-webhook for those events,
 // and put its signing secret in RESEND_WEBHOOK_SECRET.
-import crypto from 'crypto'
 import { Resend } from 'resend'
-import PostalMime from 'postal-mime'
 import { db, APP_URL, MAKER_EMAIL, firstName } from './_lib/core.js'
 import { sendEmail, emailMaker, layout, rows, button, REPLY_DOMAIN, esc } from './_lib/email.js'
 import { notifyAdmins } from './_lib/push.js'
+import { readInbound, storeAttachments } from './_lib/inbound.js'
 import { COLORS } from '../src/brand.js'
 
 export const config = { api: { bodyParser: false } }
 
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 const ORDER_ADDRESS = /^order-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})@/i
 
 async function rawBody(req) {
@@ -135,28 +133,9 @@ async function handleReceived(resend, data) {
   }
   orderId = order?.id || null
 
-  // Attachments come from the raw message (the API response only has metadata).
-  const attachments = []
-  if (email.raw?.download_url && email.attachments?.length) {
-    const raw = await fetch(email.raw.download_url)
-    if (raw.ok) {
-      const parsed = await PostalMime.parse(Buffer.from(await raw.arrayBuffer()), { attachmentEncoding: 'base64' })
-      for (const a of parsed.attachments || []) {
-        const size = Buffer.byteLength(a.content || '', 'base64')
-        if (!a.content || size > MAX_ATTACHMENT_BYTES || a.disposition === 'inline') continue
-        attachments.push({ filename: a.filename || 'attachment', content: a.content, contentType: a.mimeType })
-      }
-    }
-  }
-
-  // Save attachments (customers often reply with artwork) where the order page can show them.
-  const attachmentUrls = []
-  for (const a of attachments) {
-    const safe = a.filename.replace(/[^\w.-]+/g, '_').slice(-80)
-    const path = `inbound/${Date.now()}-${crypto.randomUUID()}-${safe}`
-    const { error: upErr } = await supabase.storage.from('order-files').upload(path, Buffer.from(a.content, 'base64'), { contentType: a.contentType })
-    if (!upErr) attachmentUrls.push(supabase.storage.from('order-files').getPublicUrl(path).data.publicUrl)
-  }
+  // Text (plain or HTML) and attachments, including photos pasted into the message.
+  const { text, attachments } = await readInbound(email)
+  const attachmentUrls = await storeAttachments(supabase, attachments)
 
   const subject = email.subject || data.subject || '(no subject)'
   await supabase.from('email_log').insert({
@@ -166,7 +145,7 @@ async function handleReceived(resend, data) {
     from_email: email.from || data.from,
     to_email: recipients[0] || '',
     subject,
-    body_text: (email.text || '').slice(0, 20000) || null,
+    body_text: text || null,
     attachment_urls: attachmentUrls.length ? attachmentUrls : null,
     resend_email_id: emailId,
     status: 'received',

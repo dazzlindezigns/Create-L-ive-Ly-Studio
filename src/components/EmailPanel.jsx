@@ -25,6 +25,7 @@ const fillTemplate = (text, order) => text
 export default function EmailPanel({ order, flash }) {
   const [log, setLog] = useState(null)
   const [open, setOpen] = useState(null)
+  const [reloading, setReloading] = useState(null)
   const [composing, setComposing] = useState(false)
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
@@ -68,6 +69,16 @@ export default function EmailPanel({ order, flash }) {
       setMessage(r.body)
       flash('Polished ✨ — read it over before sending')
     } catch (e) { flash(e.message, 'error') } finally { setPolishing(false) }
+  }
+
+  // Re-reads a reply whose text or photos didn't come through (e.g. HTML-only phone mail).
+  const reload = async (e) => {
+    setReloading(e.id)
+    try {
+      const r = await api('reload-reply', { auth: true, body: { id: e.id } })
+      setLog(prev => prev.map(x => x.id === e.id ? { ...x, body_text: r.body_text, attachment_urls: r.attachment_urls } : x))
+      if (r.empty) flash('That email really was empty — they may have meant to attach something', 'error')
+    } catch (err) { flash(err.message, 'error') } finally { setReloading(null) }
   }
 
   const replyTo = (e) => {
@@ -140,7 +151,13 @@ export default function EmailPanel({ order, flash }) {
               </button>
               {open === e.id && (
                 <div style={styles.body}>
-                  {PROBLEMS[e.status] ? `${PROBLEMS[e.status]} — this email didn't reach ${order.customer_email}. ${e.error || ''}\nCheck the address (Edit details), then send it again.` : e.body_text || (e.direction === 'in' ? '(no text — see attachments)' : '')}
+                  {PROBLEMS[e.status] ? `${PROBLEMS[e.status]} — this email didn't reach ${order.customer_email}. ${e.error || ''}\nCheck the address (Edit details), then send it again.` : e.body_text || (e.direction === 'in' && e.attachment_urls?.length ? '(photos only — see below)' : '')}
+                  {e.direction === 'in' && !e.body_text && !e.attachment_urls?.length && (
+                    <div>
+                      <div style={ui.muted}>This message didn’t come through the first time.</div>
+                      <Button small variant="ghost" loading={reloading === e.id} onClick={() => reload(e)} style={{ marginTop: 8 }}>Load message</Button>
+                    </div>
+                  )}
                   {e.attachment_urls?.length > 0 && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
                       {e.attachment_urls.map(u => (
