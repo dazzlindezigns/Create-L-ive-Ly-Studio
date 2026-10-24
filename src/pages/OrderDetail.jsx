@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2, paymentOptions, depositFor } from '../lib/money'
-import { STATUS, STATUS_ORDER } from '../lib/status'
+import { STATUS, orderFlow, statusesFor, stepsFor, nextStep } from '../lib/status'
+import { trackingUrl } from '../../api/_lib/shipping.js'
 import { BRAND, PRODUCT_TYPES } from '../brand'
 import Nav from '../components/Nav'
 import ShipModal from '../components/ShipModal'
@@ -13,6 +14,8 @@ import { ui, Badge, Button, Field, Input, TextArea, Select, Loading, useFlash, M
 const PRE_PAYMENT = ['pending', 'quote_sent', 'invoice_sent', 'payment_pending']
 // Statuses with a ready-made customer email (api/_handlers/send-status-update.js).
 const STAGE_EMAILS = { in_production: 'In production', ready_for_pickup: 'Ready for pickup', completed: 'Thank-you', declined: 'Declined' }
+const isPaid = (o) => Boolean(o.balance_paid) || (Number(o.price) > 0 && Number(o.amount_paid) >= Number(o.price) - 0.009)
+const openPdf = (o) => window.open(`/quote/${o.id}?print=1`, '_blank')
 
 export default function OrderDetail() {
   const { id } = useParams()
@@ -51,133 +54,114 @@ export default function OrderDetail() {
   if (notFound) return <div style={ui.page} className="admin-page"><Nav back="/dashboard" backLabel="Orders" /><div style={{ ...ui.wrap, textAlign: 'center', paddingTop: 60 }}>Order not found.</div></div>
   if (!order) return <div style={ui.page} className="admin-page"><Nav back="/dashboard" backLabel="Orders" /><Loading /></div>
 
+  const flow = orderFlow(order)
   const firstName = (order.customer_name || '').split(' ')[0] || 'there'
   const copy = (text, msg) => navigator.clipboard.writeText(text).then(() => flash(msg), () => flash('Copy failed', 'error'))
+  const sendStage = (stage) => api('send-status-update', { auth: true, body: { orderId: order.id, stage } })
+
+  // The big "next step" button, and the status menu for when a step was skipped or done out of order.
+  const runStep = async (step, { email }) => {
+    if (step.action === 'ship') return setShipOpen(true)
+    if (step.action === 'quote' || step.action === 'proof') {
+      return document.getElementById(step.action)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    if (!(await update({ status: step.status }, null))) return
+    if (email && step.email && order.customer_email) {
+      try { await sendStage(step.email); flash(`${STATUS[step.status].label} — emailed ${firstName} ✉️`); load() }
+      catch (e) { flash(`Status saved, but the email didn’t send: ${e.message}`, 'error') }
+    } else flash(`Status → ${STATUS[step.status].label}`)
+  }
+  const pickStatus = async (status) => {
+    // Shipping always goes through the modal so the tracking email can go out.
+    if (status === 'shipped' && order.status !== 'shipped') return setShipOpen(true)
+    if (await update({ status }, `Status → ${STATUS[status]?.label}`)) setStagePrompt(STAGE_EMAILS[status] && order.customer_email ? status : null)
+  }
+
+  const shop = flow !== 'custom'
+  const hasDigital = (order.shop_cart || []).some(l => l.kind === 'digital')
 
   return (
     <div style={ui.page} className="admin-page">
       <Nav back="/dashboard" backLabel="Orders" />
       <div style={{ ...ui.wrap, maxWidth: 1180, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* Header */}
+        {/* Header: who, where it is, and the one thing to do next */}
         <section style={ui.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
             <div style={{ minWidth: 0 }}>
-              <div style={ui.eyebrow}>{order.source === 'shop' ? 'Shop order' : order.source === 'invoice' ? 'Invoice' : 'Custom request'} · #{order.id.slice(0, 8)}</div>
+              <div style={ui.eyebrow}>{{ shop: 'Shop order', digital: 'Digital order', custom: order.source === 'invoice' ? 'Invoice' : 'Custom request' }[flow]} · #{order.id.slice(0, 8)}</div>
               <h1 style={{ ...ui.h1, fontSize: 24, marginTop: 4 }}>{order.customer_name}</h1>
               <div style={{ ...ui.muted, marginTop: 4 }}>
                 <a href={`mailto:${order.customer_email}`}>{order.customer_email}</a>
                 {order.customer_phone && <> · <a href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></>}
               </div>
-              <div style={{ ...ui.muted, marginTop: 2 }}>Received {new Date(order.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+              <div style={{ ...ui.muted, marginTop: 2 }}>{shop ? 'Ordered' : 'Received'} {new Date(order.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</div>
             </div>
             <Badge status={order.status} />
           </div>
-          <div style={{ ...ui.row, marginTop: 14, alignItems: 'flex-end' }}>
-            <Field label="Status">
-              <Select value={order.status} onChange={async e => {
-                const status = e.target.value
-                if (await update({ status }, `Status → ${STATUS[status]?.label}`)) setStagePrompt(STAGE_EMAILS[status] && order.customer_email ? status : null)
-              }}
-                options={STATUS_ORDER.map(k => ({ value: k, label: STATUS[k].label }))} />
-            </Field>
-            <Button variant="ghost" small onClick={() => setEditOpen(true)}>Edit details</Button>
-          </div>
+
+          <StepTracker order={order} />
+          <NextStep order={order} firstName={firstName} onRun={runStep} />
+
           {stagePrompt && (
             <div style={styles.stagePrompt}>
               <span>✉️ Email {firstName} the <strong>{STAGE_EMAILS[stagePrompt]}</strong> update?</span>
               <span style={{ display: 'flex', gap: 8 }}>
                 <Button small loading={stageSending} onClick={async () => {
                   setStageSending(true)
-                  try { await api('send-status-update', { auth: true, body: { orderId: order.id, stage: stagePrompt } }); flash(`Emailed ${firstName} ✉️`); setStagePrompt(null); load() }
+                  try { await sendStage(stagePrompt); flash(`Emailed ${firstName} ✉️`); setStagePrompt(null); load() }
                   catch (err) { flash(err.message, 'error') } finally { setStageSending(false) }
                 }}>Send email</Button>
                 <Button small variant="ghost" onClick={() => setStagePrompt(null)}>No thanks</Button>
               </span>
             </div>
           )}
-        </section>
 
+          <div style={styles.statusRow}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)' }}>
+              Change status
+              <Select value={order.status} onChange={e => pickStatus(e.target.value)} style={styles.statusSelect}
+                options={statusesFor(order).map(k => ({ value: k, label: STATUS[k]?.label || k }))} />
+            </label>
+            <button onClick={() => setEditOpen(true)} style={styles.linkBtn}>Edit details</button>
+          </div>
+        </section>
 
         <div className="detail-cols">
           <div className="detail-col">
-        {/* Request */}
-        <section style={ui.card}>
-          <h2 style={ui.h2}>Request</h2>
-          <dl style={styles.dl}>
-            <Row k="Product" v={`${order.product_type} × ${order.quantity}`} />
-            <Row k="Size" v={order.size} />
-            <Row k="Finish" v={order.finish} />
-            <Row k="Need by" v={order.need_by && new Date(order.need_by + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} />
-            <Row k="Delivery" v={order.fulfillment === 'shipping'
-              ? `Ship to ${[order.shipping_address?.street, order.shipping_address?.street2, order.shipping_address?.city].filter(Boolean).join(', ')}, ${order.shipping_address?.state || ''} ${order.shipping_address?.zip || ''}`
-              : order.fulfillment === 'digital' ? 'Digital download (nothing to ship)' : BRAND.pickupLabel} />
-          </dl>
-          {order.description && <p style={styles.pre}>{order.description}</p>}
-          {order.notes && <><div style={{ ...ui.label, marginTop: 12 }}>Customer notes</div><p style={styles.pre}>{order.notes}</p></>}
-          {order.image_urls?.length > 0 && (
-            <>
-              <div style={{ ...ui.label, marginTop: 12 }}>Customer files</div>
-              <FileGrid urls={order.image_urls} />
-            </>
-          )}
-        </section>
-
-        <QuoteSection order={order} payments={payments} update={update} flash={flash} reload={load}
-          onCopyLink={() => copy(`${APP_URL}/quote/${order.id}`, 'Quote link copied')}
-          onRecordPayment={() => setPayOpen(true)} />
-
-        <ProofSection order={order} update={update} flash={flash} reload={load}
-          onCopyMessage={() => copy(
-            `Hey ${firstName}! Your proof is ready for review. Tap the link below to approve or request changes — this takes less than a minute!\n\n${APP_URL}/proof/${order.id}\n\n— ${BRAND.ownerFirstName}`,
-            'Proof message copied — paste it into a text!',
-          )} />
-
+            {shop ? (
+              <ItemsSection order={order} flash={flash} onRecordPayment={() => setPayOpen(true)} sendStage={sendStage} load={load} />
+            ) : (
+              <>
+                <RequestSection order={order} />
+                <QuoteSection order={order} payments={payments} update={update} flash={flash} reload={load} sendStage={sendStage}
+                  onCopyLink={() => copy(`${APP_URL}/quote/${order.id}`, 'Quote link copied')}
+                  onRecordPayment={() => setPayOpen(true)} />
+                {/* Proofs come after payment; before that the page is just the request and the quote. */}
+                {(!PRE_PAYMENT.includes(order.status) || order.proof_items?.length > 0 || order.proof_urls?.length > 0) && <ProofSection order={order} update={update} flash={flash} reload={load}
+                  onCopyMessage={() => copy(
+                    `Hey ${firstName}! Your proof is ready for review. Tap the link below to approve or request changes — this takes less than a minute!\n\n${APP_URL}/proof/${order.id}\n\n— ${BRAND.ownerFirstName}`,
+                    'Proof message copied — paste it into a text!',
+                  )} />}
+              </>
+            )}
           </div>
           <div className="detail-col">
-        {/* Admin-only */}
-        <AdminOnly order={order} update={update} />
+            {hasDigital && <DigitalSection order={order} flash={flash} onCopy={() => copy(`${APP_URL}/downloads/${order.id}`, 'Download link copied')} />}
+            {order.fulfillment !== 'digital' && <DeliverySection order={order} copy={copy} onShip={() => setShipOpen(true)} />}
+            <EmailPanel order={order} flash={flash} />
+            <PrivateNote order={order} update={update} />
 
-        <EmailPanel order={order} flash={flash} />
-
-        {(order.shop_cart || []).some(l => l.kind === 'digital') && (
-          <DigitalSection order={order} flash={flash} onCopy={() => copy(`${APP_URL}/downloads/${order.id}`, 'Download link copied')} />
-        )}
-
-        {/* Fulfillment */}
-        {order.fulfillment !== 'digital' && (
-        <section style={ui.card}>
-          <h2 style={ui.h2}>{order.fulfillment === 'shipping' ? 'Shipping' : 'Pickup'}</h2>
-          {order.tracking_number ? (
-            <dl style={styles.dl}>
-              <Row k="Carrier" v={order.shipping_carrier} />
-              <Row k="Tracking" v={order.tracking_number} />
-              <Row k="Shipped" v={order.shipped_at && new Date(order.shipped_at).toLocaleDateString()} />
-            </dl>
-          ) : <p style={ui.muted}>{order.fulfillment === 'shipping' ? 'Not shipped yet.' : `Customer picks up — ${BRAND.pickupLabel}.`}</p>}
-          <div style={{ ...ui.row, marginTop: 12 }}>
-            <Button variant="secondary" small onClick={() => setShipOpen(true)}>{order.tracking_number ? 'Update tracking' : 'Mark shipped'}</Button>
-            {order.fulfillment !== 'shipping' && order.status !== 'ready_for_pickup' && (
-              <Button variant="ghost" small onClick={() => update({ status: 'ready_for_pickup' }, 'Marked ready for pickup')}>Mark ready for pickup</Button>
-            )}
-            {order.status !== 'completed' && (
-              <Button variant="ghost" small onClick={() => update({ status: 'completed' }, 'Order complete 🎉')}>Mark complete</Button>
-            )}
-          </div>
-        </section>
-        )}
-
-        {/* Danger zone */}
-        <section style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {!['cancelled', 'declined'].includes(order.status) && (
-            <Button variant="danger" small onClick={() => confirm('Cancel this order?') && update({ status: 'cancelled' }, 'Order cancelled')}>Cancel order</Button>
-          )}
-          <Button variant="danger" small onClick={async () => {
-            if (!confirm('Delete this order permanently? This cannot be undone.')) return
-            const { error } = await supabase.from('orders').delete().eq('id', id)
-            if (error) flash(error.message, 'error'); else navigate('/dashboard')
-          }}>Delete</Button>
-        </section>
+            <section style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', padding: 14 }}>
+              {!['cancelled', 'declined'].includes(order.status) && (
+                <Button variant="danger" small onClick={() => confirm('Cancel this order?') && update({ status: 'cancelled' }, 'Order cancelled')}>Cancel order</Button>
+              )}
+              <Button variant="danger" small onClick={async () => {
+                if (!confirm('Delete this order permanently? This cannot be undone.')) return
+                const { error } = await supabase.from('orders').delete().eq('id', id)
+                if (error) flash(error.message, 'error'); else navigate('/dashboard')
+              }}>Delete</Button>
+            </section>
           </div>
         </div>
       </div>
@@ -190,12 +174,172 @@ export default function OrderDetail() {
   )
 }
 
+// ── Where the order is ──────────────────────────────────────────────────────
+function StepTracker({ order }) {
+  const { steps, current } = stepsFor(order)
+  if (current < 0) return null
+  // On the last step ("Done"/"Delivered") every step is finished.
+  const finished = current === steps.length - 1
+  return (
+    <ol style={styles.steps}>
+      {steps.map((label, i) => {
+        const done = i < current || finished
+        const now = i === current && !finished
+        return (
+          <li key={label} style={{ ...styles.step, color: now ? 'var(--primary)' : done ? 'var(--dark)' : 'var(--muted)' }}>
+            <span style={{ ...styles.stepDot, ...(done ? styles.stepDone : now ? styles.stepNow : {}) }}>{done ? '✓' : i + 1}</span>
+            <span style={{ fontWeight: now ? 800 : 600 }}>{label}</span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+function NextStep({ order, firstName, onRun }) {
+  const step = nextStep(order)
+  const [email, setEmail] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const run = async (s) => {
+    // Scrolling and opening the ship form are instant; only status changes wait on the server.
+    if (s.action !== 'status') return onRun(s, { email })
+    setBusy(true)
+    try { await onRun(s, { email }) } finally { setBusy(false) }
+  }
+  const canEmail = (s) => s?.email && order.customer_email
+
+  return (
+    <div style={styles.next}>
+      {step.label ? (
+        <>
+          <div style={ui.eyebrow}>Next step</div>
+          <Button loading={busy} onClick={() => run(step)} style={{ marginTop: 8, width: '100%', maxWidth: 420 }}>{step.label}</Button>
+          {canEmail(step) && (
+            <label style={styles.emailCheck}>
+              <input type="checkbox" checked={email} onChange={e => setEmail(e.target.checked)} /> {step.email === 'completed' ? `Send ${firstName} a thank-you email` : `Email ${firstName} the update`}
+            </label>
+          )}
+          {step.hint && <div style={ui.hint}>{step.hint}</div>}
+        </>
+      ) : step.waiting ? (
+        <div style={{ fontSize: 14 }}><strong>⏳ Waiting</strong><div style={{ ...ui.muted, marginTop: 2 }}>{step.waiting}</div></div>
+      ) : (
+        <div style={{ fontSize: 14, fontWeight: 700, color: order.status === 'completed' ? 'var(--success)' : 'var(--muted)' }}>{order.status === 'completed' ? '✓ ' : ''}{step.done}</div>
+      )}
+      {step.alt && (
+        <button disabled={busy} onClick={() => run({ ...step.alt, action: 'status' })} style={{ ...styles.linkBtn, marginTop: 8 }}>{step.alt.label}</button>
+      )}
+    </div>
+  )
+}
+
+// ── Shop orders: what they bought and what they paid ───────────────────────
+function ItemsSection({ order, flash, onRecordPayment, sendStage, load }) {
+  const [sending, setSending] = useState(false)
+  const lines = order.shop_cart || []
+  // Discount / shipping lines come after the item lines in the description (create-shop-order.js).
+  const extras = String(order.description || '').split('\n').slice(lines.length).filter(Boolean)
+  const paid = isPaid(order)
+  const emailReceipt = async () => {
+    setSending(true)
+    try { await sendStage('receipt'); flash('Receipt emailed ✉️'); load() }
+    catch (e) { flash(e.message, 'error') } finally { setSending(false) }
+  }
+
+  return (
+    <section style={ui.card}>
+      <h2 style={ui.h2}>What they ordered</h2>
+      {lines.map((l, i) => (
+        <div key={i} style={styles.line}>
+          <span style={{ minWidth: 0 }}>
+            <strong>{l.kind === 'digital' ? '' : `${l.quantity} × `}{l.productName}</strong>
+            {(l.option || l.kind === 'digital') && <div style={ui.muted}>{l.kind === 'digital' ? '⬇ Digital download' : l.option}</div>}
+          </span>
+          <span>{fmt(l.itemTotal)}</span>
+        </div>
+      ))}
+      {extras.map((t, i) => <div key={i} style={{ ...styles.line, color: 'var(--muted)' }}><span>{t}</span></div>)}
+      <div style={{ ...styles.line, borderBottom: 'none', fontWeight: 800, fontSize: 15 }}><span>Total</span><span>{fmt(order.price)}</span></div>
+
+      {order.notes && <><div style={{ ...ui.label, marginTop: 12 }}>Customer note</div><p style={styles.pre}>{order.notes}</p></>}
+      {order.image_urls?.length > 0 && <><div style={{ ...ui.label, marginTop: 12 }}>Customer files</div><FileGrid urls={order.image_urls} /></>}
+
+      <div style={{ ...styles.payBox, ...(paid ? styles.payBoxPaid : {}) }}>
+        {paid
+          ? <>✓ {Number(order.price) > 0 ? `Paid ${fmt(order.amount_paid)}` : `Free order${order.shop_discount_code ? ` (code ${order.shop_discount_code})` : ''}`}{order.paid_at && ` · ${new Date(order.paid_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}</>
+          : <>Not paid yet</>}
+      </div>
+      <div style={{ ...ui.row, marginTop: 12 }}>
+        {paid ? (
+          <>
+            <Button variant="ghost" small onClick={() => openPdf(order)}>📄 Download receipt</Button>
+            <Button variant="ghost" small loading={sending} onClick={emailReceipt}>✉️ Email receipt</Button>
+          </>
+        ) : (
+          <Button variant="ghost" small onClick={onRecordPayment}>They paid another way — record it</Button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Custom requests: what they asked for ───────────────────────────────────
+function RequestSection({ order }) {
+  return (
+    <section style={ui.card}>
+      <h2 style={ui.h2}>Request</h2>
+      <dl style={styles.dl}>
+        <Row k="Product" v={`${order.product_type} × ${order.quantity}`} />
+        <Row k="Size" v={order.size} />
+        <Row k="Finish" v={order.finish} />
+        <Row k="Need by" v={order.need_by && new Date(order.need_by + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} />
+      </dl>
+      {order.description && <p style={styles.pre}>{order.description}</p>}
+      {order.notes && <><div style={{ ...ui.label, marginTop: 12 }}>Customer notes</div><p style={styles.pre}>{order.notes}</p></>}
+      {order.image_urls?.length > 0 && (
+        <>
+          <div style={{ ...ui.label, marginTop: 12 }}>Customer files</div>
+          <FileGrid urls={order.image_urls} />
+        </>
+      )}
+    </section>
+  )
+}
+
+// ── Shipping or pickup ──────────────────────────────────────────────────────
+function DeliverySection({ order, copy, onShip }) {
+  const a = order.shipping_address
+  const ship = order.fulfillment === 'shipping'
+  const address = a?.street ? [a.name || order.customer_name, a.street, a.street2, `${a.city}, ${a.state} ${a.zip}`].filter(Boolean).join('\n') : ''
+  return (
+    <section style={ui.card}>
+      <h2 style={ui.h2}>{ship ? 'Shipping' : 'Pickup'}</h2>
+      {ship ? (
+        <>
+          {address
+            ? <div style={{ whiteSpace: 'pre-line', fontSize: 14, lineHeight: 1.5 }}>{address}</div>
+            : <p style={ui.muted}>No address on file — use Edit details to add one.</p>}
+          {address && <button onClick={() => copy(address, 'Address copied')} style={styles.linkBtn}>Copy address</button>}
+          {order.shipped_at && (
+            <dl style={{ ...styles.dl, marginTop: 12 }}>
+              <Row k="Shipped" v={new Date(order.shipped_at).toLocaleDateString()} />
+              <Row k="Carrier" v={order.shipping_carrier} />
+              <Row k="Tracking" v={order.tracking_number && <a href={trackingUrl(order.shipping_carrier, order.tracking_number)} target="_blank" rel="noreferrer">{order.tracking_number} ↗</a>} />
+            </dl>
+          )}
+          {order.shipped_at && <button onClick={onShip} style={styles.linkBtn}>{order.tracking_number ? 'Change tracking' : 'Add tracking'}</button>}
+        </>
+      ) : <p style={ui.muted}>Customer picks up — {BRAND.pickupLabel}.</p>}
+    </section>
+  )
+}
+
 // ── Digital downloads ───────────────────────────────────────────────────────
 function DigitalSection({ order, flash, onCopy }) {
   const [sending, setSending] = useState(false)
   const items = order.shop_cart.filter(l => l.kind === 'digital')
   // Same rule as isPaidInFull() in api/_lib/downloads.js (balance_paid covers free $0 orders).
-  const paidInFull = Boolean(order.balance_paid) || (Number(order.price) > 0 && Number(order.amount_paid) >= Number(order.price) - 0.009)
+  const paidInFull = isPaid(order)
   const resend = async () => {
     setSending(true)
     try { await api('send-downloads', { body: { orderId: order.id }, auth: true }); flash('Download email sent ✉️') }
@@ -204,14 +348,14 @@ function DigitalSection({ order, flash, onCopy }) {
   return (
     <section style={ui.card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 style={ui.h2}>Digital downloads</h2>
+        <h2 style={ui.h2}>Downloads</h2>
         <span style={ui.muted}>{paidInFull ? `Opened ${order.download_count || 0}×` : 'Locked until paid'}</span>
       </div>
       {items.map((l, i) => (
         <div key={i} style={styles.line}><span>{l.productName}</span><span style={ui.muted}>{l.digitalFileName}</span></div>
       ))}
       <div style={{ ...ui.row, marginTop: 12 }}>
-        <Button variant="secondary" small loading={sending} disabled={!paidInFull} onClick={resend}>Email download link</Button>
+        <Button variant="secondary" small loading={sending} disabled={!paidInFull} onClick={resend}>Re-send download email</Button>
         <Button variant="ghost" small onClick={onCopy}>Copy download link</Button>
       </div>
       {!paidInFull && <div style={ui.hint}>The link unlocks automatically after a card payment. If they paid another way, record the payment first, then email the link.</div>}
@@ -219,25 +363,22 @@ function DigitalSection({ order, flash, onCopy }) {
   )
 }
 
-// ── Admin-only fields (PO number is NEVER shown to customers) ───────────────
-function AdminOnly({ order, update }) {
-  const [po, setPo] = useState(order.po_number || '')
+// ── Private note (never shown to customers) ─────────────────────────────────
+function PrivateNote({ order, update }) {
   const [notes, setNotes] = useState(order.internal_notes || '')
-  const dirty = po !== (order.po_number || '') || notes !== (order.internal_notes || '')
+  const dirty = notes !== (order.internal_notes || '')
   return (
-    <section style={{ ...ui.card, background: 'var(--card2)', border: '1px dashed var(--border)' }}>
-      <div style={{ ...ui.eyebrow, color: 'var(--mid)' }}>🔒 Admin only — never shown to customers</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-        <Field label="PO number"><Input value={po} onChange={e => setPo(e.target.value)} placeholder="e.g. PO-1042" /></Field>
-        <Field label="Internal notes"><TextArea rows={2} value={notes} onChange={e => setNotes(e.target.value)} /></Field>
-        {dirty && <Button small onClick={() => update({ po_number: po.trim() || null, internal_notes: notes.trim() || null })}>Save</Button>}
-      </div>
+    <section style={{ ...ui.card, padding: 14 }}>
+      <Field label="📝 Private note — only you see this">
+        <TextArea rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
+      </Field>
+      {dirty && <Button small onClick={() => update({ internal_notes: notes.trim() || null }, 'Note saved')} style={{ marginTop: 8 }}>Save note</Button>}
     </section>
   )
 }
 
 // ── Quote + payments ────────────────────────────────────────────────────────
-function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRecordPayment }) {
+function QuoteSection({ order, payments, update, flash, reload, sendStage, onCopyLink, onRecordPayment }) {
   const navigate = useNavigate()
   const [q, setQ] = useState({
     price: order.price ?? '',
@@ -279,7 +420,7 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
   const canUseCalculator = !locked && order.source !== 'shop'
 
   return (
-    <section style={ui.card}>
+    <section id="quote" style={{ ...ui.card, scrollMarginTop: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h2 style={ui.h2}>Quote & payment</h2>
         {order.quote_sent_at && <span style={ui.muted}>Sent {new Date(order.quote_sent_at).toLocaleDateString()}</span>}
@@ -334,12 +475,19 @@ function QuoteSection({ order, payments, update, flash, reload, onCopyLink, onRe
           <Button small loading={sending} onClick={send}>{order.quote_sent_at ? 'Save & re-send quote' : 'Save & send quote'}</Button>
           <Button variant="ghost" small onClick={onCopyLink}>Copy quote link</Button>
           {order.price != null && (
-            <Button variant="ghost" small onClick={() => window.open(`/quote/${order.id}?print=1`, '_blank')}>📄 PDF</Button>
+            <Button variant="ghost" small onClick={() => openPdf(order)}>📄 {paid > 0 && remaining <= 0 ? 'Receipt' : order.source === 'invoice' ? 'Invoice' : 'Quote'} PDF</Button>
+          )}
+          {paid > 0 && (
+            <Button variant="ghost" small loading={reminding === 'receipt'} onClick={async () => {
+              setReminding('receipt')
+              try { await sendStage('receipt'); flash('Receipt emailed ✉️'); reload() }
+              catch (e) { flash(e.message, 'error') } finally { setReminding(false) }
+            }}>✉️ Email receipt</Button>
           )}
           {order.quote_sent_at && remaining > 0 && (
-            <Button variant="ghost" small loading={reminding} onClick={async () => {
-              setReminding(true)
-              try { await api('send-status-update', { auth: true, body: { orderId: order.id, stage: 'payment_reminder' } }); flash('Payment reminder sent ✉️'); reload() }
+            <Button variant="ghost" small loading={reminding === 'reminder'} onClick={async () => {
+              setReminding('reminder')
+              try { await sendStage('payment_reminder'); flash('Payment reminder sent ✉️'); reload() }
               catch (e) { flash(e.message, 'error') } finally { setReminding(false) }
             }}>⏰ Payment reminder</Button>
           )}
@@ -381,7 +529,8 @@ function PaymentModal({ order, onClose, onSaved, flash }) {
     const amountPaid = round2((Number(order.amount_paid) || 0) + amt)
     const fields = { amount_paid: amountPaid, deposit_paid: true, deposit_paid_at: order.deposit_paid_at || now }
     if (amountPaid >= round2(order.price)) { fields.balance_paid = true; fields.paid_at = now }
-    if (PRE_PAYMENT.includes(order.status)) fields.status = 'confirmed'
+    // Downloads-only orders are done once paid; everything else moves on to making.
+    if (PRE_PAYMENT.includes(order.status)) fields.status = orderFlow(order) === 'digital' && fields.balance_paid ? 'completed' : 'confirmed'
     const { error: e1 } = await supabase.from('payments').insert({ order_id: order.id, kind: 'manual', amount: amt, status: 'paid', paid_at: now })
     const { error: e2 } = await supabase.from('orders').update(fields).eq('id', order.id)
     setBusy(false)
@@ -432,7 +581,7 @@ function ProofSection({ order, update, flash, reload, onCopyMessage }) {
   const statusLabel = { sent: 'Waiting on customer', approved: 'Approved ✓', changes_requested: 'Changes requested' }[order.proof_status]
 
   return (
-    <section style={ui.card}>
+    <section id="proof" style={{ ...ui.card, scrollMarginTop: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h2 style={ui.h2}>Proofs</h2>
         {statusLabel && <Badge status={order.proof_status === 'approved' ? 'proof_approved' : order.proof_status === 'sent' ? 'proof_sent' : 'revisions_requested'}>{statusLabel}</Badge>}
@@ -558,6 +707,18 @@ const Row = ({ k, v }) => v ? (
 ) : null
 
 const styles = {
+  statusRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' },
+  statusSelect: { width: 'auto', padding: '6px 10px', fontSize: 14, borderRadius: 10 },
+  linkBtn: { background: 'none', border: 'none', color: 'var(--secondary)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: '6px 0', display: 'block' },
+  steps: { listStyle: 'none', display: 'flex', gap: 4, marginTop: 16 },
+  step: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontSize: 12, flex: '1 1 0', minWidth: 0, textAlign: 'center' },
+  stepDot: { width: 22, height: 22, borderRadius: '50%', border: '1.5px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0, background: 'var(--card)' },
+  stepDone: { background: 'var(--success)', borderColor: 'var(--success)', color: '#fff' },
+  stepNow: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
+  next: { marginTop: 14, padding: 14, borderRadius: 14, background: 'var(--card2)', border: '1px solid var(--border)' },
+  emailCheck: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginTop: 10, cursor: 'pointer' },
+  payBox: { marginTop: 14, padding: '10px 12px', borderRadius: 12, background: 'rgba(199,128,43,0.1)', color: 'var(--warning)', fontWeight: 700, fontSize: 14 },
+  payBoxPaid: { background: 'rgba(47,158,98,0.1)', color: 'var(--success)' },
   stagePrompt: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)', fontSize: 14 },
   aiQuote: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 14, padding: 12, marginBottom: 14 },
   dl: { display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 8, columnGap: 12 },

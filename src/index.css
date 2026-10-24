@@ -44,10 +44,15 @@ img { max-width: 100%; }
 
 /* Printable documents (quote / invoice / receipt PDF) — hidden on screen. */
 .print-only { display: none; }
+@page { margin: 0.5in; }
 @media print {
   .print-only { display: block !important; }
   .no-print { display: none !important; }
-  body { background: #fff; }
+  /* The screen layout's full-height page (min-height: 100vh) makes Safari print an empty
+     second page, so the printout is only as tall as the document itself. */
+  html, body, #root { min-height: 0 !important; height: auto !important; background: #fff !important; }
+  .print-only { break-after: avoid; page-break-after: avoid; }
+  .print-only tr { break-inside: avoid; page-break-inside: avoid; }
 }
 
 /* ── Responsive layout helpers (inline styles can't do media queries) ───────── */

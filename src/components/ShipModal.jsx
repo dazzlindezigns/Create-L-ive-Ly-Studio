@@ -25,7 +25,7 @@ export default function ShipModal({ order, onClose, onDone }) {
         auth: true,
         body: { orderId: order.id, trackingNumber: tracking.trim(), carrier: carrier === 'Other' ? otherCarrier.trim() : carrier, notify },
       })
-      onDone(notify ? 'Marked shipped — tracking emailed to customer' : 'Marked shipped')
+      onDone(notify ? 'Marked shipped — customer emailed ✉️' : 'Marked shipped')
     } catch (e) { setError(e.message); setBusy(false) }
   }
 
@@ -43,12 +43,12 @@ export default function ShipModal({ order, onClose, onDone }) {
           <Field label="Carrier"><Select value={carrier} onChange={e => setCarrier(e.target.value)} options={CARRIERS} /></Field>
           {carrier === 'Other' && <Field label="Carrier name"><Input value={otherCarrier} onChange={e => setOtherCarrier(e.target.value)} /></Field>}
         </div>
-        <Field label="Tracking number"><Input value={tracking} onChange={e => setTracking(e.target.value)} autoFocus /></Field>
+        <Field label="Tracking number" hint="Optional — leave blank for a stamped envelope or hand delivery."><Input value={tracking} onChange={e => setTracking(e.target.value)} autoFocus /></Field>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
-          <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} /> Email the customer their tracking link
+          <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} /> Email the customer that it shipped{tracking.trim() ? ' (with the tracking link)' : ''}
         </label>
         {error && <div style={ui.error}>{error}</div>}
-        <Button block loading={busy} disabled={!tracking.trim()} onClick={save}>Mark shipped</Button>
+        <Button block loading={busy} onClick={save}>{tracking.trim() ? 'Mark shipped' : 'Mark shipped (no tracking)'}</Button>
       </div>
     </Modal>
   )

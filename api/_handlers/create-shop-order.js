@@ -96,12 +96,7 @@ export default async function handler(req, res) {
     try { await supabase.rpc('increment_discount_uses', { code_id: cart.discount.id }) } catch {}
   }
 
-  await notifyAdmins({
-    title: '🛍 New shop order',
-    body: `${firstName(customerName)} checked out ${productType} — ${fmt(cart.total)} (awaiting payment)`,
-    url: `/dashboard/order/${order.id}`,
-  })
-
+  // No alert yet — she hears about it once it's paid (stripe-webhook.js), so abandoned checkouts don't ping her.
   return res.status(200).json({ orderId: order.id, url })
 }
 

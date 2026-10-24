@@ -85,7 +85,8 @@ async function handleCompleted(session) {
 
   await Promise.all([
     notifyAdmins({
-      title: `💸 ${label} received`,
+      // Shop orders only alert once they're paid, so this is the "new order" ping for them.
+      title: order.source === 'shop' ? '🛍 New shop order (paid)' : `💸 ${label} received`,
       body: `${firstName(order.customer_name)} paid ${fmt(amount)} for ${order.product_type}${remaining ? ` · ${fmt(remaining)} left` : ' · paid in full'}`,
       url: `/dashboard/order/${order.id}`,
     }),

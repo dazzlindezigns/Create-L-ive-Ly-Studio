@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmt } from '../lib/money'
-import { QUEUE_PRIORITY, FILTER_TABS, PIPELINE } from '../lib/status'
+import { TODO_PRIORITY, FILTER_TABS, PIPELINE, nextStep, isAbandoned } from '../lib/status'
 import { BRAND } from '../brand'
 import Nav, { AppLinks, IconExternal } from '../components/Nav'
 import { ui, Badge, Loading, useFlash } from '../components/ui'
@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState(null)
   const [filter, setFilter] = useState(() => {
     const saved = sessionStorage.getItem('dash-filter')
-    return FILTER_TABS.some(t => t.key === saved) ? saved : 'queue'
+    return FILTER_TABS.some(t => t.key === saved) ? saved : 'todo'
   })
   const [search, setSearch] = useState('')
   const [shopOpen, setShopOpen] = useState(null)
@@ -21,7 +21,7 @@ export default function Dashboard() {
   const loadOrders = async () => {
     const { data, error } = await supabase
       .from('orders')
-      .select('id, created_at, customer_name, customer_email, product_type, quantity, status, price, amount_paid, need_by, source, fulfillment, po_number')
+      .select('id, created_at, customer_name, customer_email, product_type, quantity, status, price, amount_paid, need_by, source, fulfillment')
       .order('created_at', { ascending: false })
       .limit(500)
     if (error) flash(error.message, 'error')
@@ -57,20 +57,19 @@ export default function Dashboard() {
 
   const visible = useMemo(() => {
     if (!orders) return []
-    let list = filter === 'queue'
-      ? orders.filter(o => o.status in QUEUE_PRIORITY).sort((a, b) => {
-          const p = QUEUE_PRIORITY[a.status] - QUEUE_PRIORITY[b.status]
-          if (p) return p
-          return new Date(a.need_by || a.created_at) - new Date(b.need_by || b.created_at)
-        })
-      : filter === 'all' ? orders : orders.filter(o => o.status === filter)
+    const tab = FILTER_TABS.find(t => t.key === filter) || FILTER_TABS[0]
+    let list = orders.filter(tab.match)
+    // To do: most urgent first, then by due date.
+    if (filter === 'todo') list.sort((a, b) => (TODO_PRIORITY[a.status] - TODO_PRIORITY[b.status])
+      || new Date(a.need_by || a.created_at) - new Date(b.need_by || b.created_at))
     const q = search.trim().toLowerCase()
-    if (q) list = list.filter(o => [o.customer_name, o.customer_email, o.product_type, o.po_number, o.id].some(v => String(v || '').toLowerCase().includes(q)))
+    // Search looks through every order, whatever tab is open.
+    if (q) list = orders.filter(o => [o.customer_name, o.customer_email, o.product_type, o.id].some(v => String(v || '').toLowerCase().includes(q)))
     return list
   }, [orders, filter, search])
 
   const revenue = (orders || []).reduce((s, o) => s + (Number(o.amount_paid) || 0), 0)
-  const queueCount = (orders || []).filter(o => o.status in QUEUE_PRIORITY).length
+  const todoCount = (orders || []).filter(FILTER_TABS[0].match).length
 
   return (
     <div style={ui.page} className="admin-page">
@@ -118,7 +117,7 @@ export default function Dashboard() {
         {/* Status filters — a grid, so every status is visible without scrolling */}
         <div className="dash-tabs" style={styles.tabs}>
           {FILTER_TABS.map(t => {
-            const n = t.key === 'queue' ? queueCount : t.badge ? counts[t.key] || 0 : 0
+            const n = t.badge ? todoCount : 0
             const on = filter === t.key
             return (
               <button key={t.key} onClick={() => setFilter(t.key)} style={{ ...styles.tab, ...(on ? styles.tabOn : {}) }}>
@@ -128,10 +127,10 @@ export default function Dashboard() {
           })}
         </div>
 
-        <input placeholder="Search name, email, product, PO…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...ui.input, marginBottom: 12 }} />
+        <input placeholder="Search name, email or product…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...ui.input, marginBottom: 12 }} />
 
         {orders === null ? <Loading /> : visible.length === 0 ? (
-          <Empty text={filter === 'queue' ? 'Queue is clear — nothing needs your hands right now. ✨' : 'No orders here.'} />
+          <Empty text={filter === 'todo' ? 'All caught up — nothing needs you right now. ✨' : 'No orders here.'} />
         ) : (
           <div className="order-grid">
             {visible.map(o => (
@@ -141,15 +140,15 @@ export default function Dashboard() {
                     <div style={styles.name}>{o.customer_name}</div>
                     <div style={styles.product}>{o.product_type} · {o.quantity}</div>
                   </div>
-                  <Badge status={o.status} />
+                  {isAbandoned(o) ? <Badge color="var(--muted)" bg="var(--card2)">Didn’t pay</Badge> : <Badge status={o.status} />}
                 </div>
+                <NextHint order={o} />
                 <div style={styles.meta}>
                   <span>{new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                   {o.source === 'shop' && <span style={styles.pill}>Shop</span>}
                   {o.source === 'invoice' && <span style={styles.pill}>Invoice</span>}
                   {o.fulfillment === 'shipping' && <span style={styles.pill}>Ships</span>}
                   {o.fulfillment === 'digital' && <span style={styles.pill}>Digital</span>}
-                  {o.po_number && <span style={styles.pill}>PO {o.po_number}</span>}
                   {o.need_by && <span style={{ color: dueColor(o.need_by), fontWeight: 600 }}>Due {new Date(o.need_by + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                   <span style={{ marginLeft: 'auto', fontWeight: 700, color: 'var(--dark)' }}>{o.price != null ? fmt(o.price) : 'Needs quote'}</span>
                 </div>
@@ -167,6 +166,15 @@ export default function Dashboard() {
 function dueColor(d) {
   const days = (new Date(d + 'T00:00:00') - new Date()) / 86400000
   return days < 2 ? 'var(--danger)' : days < 5 ? 'var(--warning)' : 'var(--muted)'
+}
+
+// One line on each card saying what happens next, so she doesn't have to open the order to know.
+function NextHint({ order }) {
+  if (isAbandoned(order)) return null
+  const step = nextStep(order)
+  if (step.done) return null
+  const todo = order.status in TODO_PRIORITY
+  return <div style={{ ...styles.next, color: todo ? 'var(--primary)' : 'var(--muted)' }}>{todo ? '→ ' : '⏳ '}{step.short}</div>
 }
 
 const Empty = ({ text }) => <div style={{ ...ui.card, textAlign: 'center', color: 'var(--muted)', padding: 36 }}>{text}</div>
@@ -193,6 +201,7 @@ const styles = {
   product: { fontSize: 13, color: 'var(--mid)', marginTop: 2 },
   meta: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: 'var(--muted)' },
   dot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)', marginRight: 6, verticalAlign: 'middle' },
+  next: { fontSize: 13, fontWeight: 700, marginTop: 8, textAlign: 'left' },
   pill: { background: 'var(--card2)', borderRadius: 6, padding: '2px 7px', fontWeight: 600, color: 'var(--mid)' },
 }
 

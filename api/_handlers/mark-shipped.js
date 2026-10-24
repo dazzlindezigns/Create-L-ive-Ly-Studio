@@ -1,4 +1,4 @@
-import { db, requireMethod, requireAdmin, getOrder, HttpError, firstName } from '../_lib/core.js'
+import { db, requireMethod, requireAdmin, getOrder, HttpError, firstName, APP_URL } from '../_lib/core.js'
 import { layout, rows, panel, button, sendEmail, esc } from '../_lib/email.js'
 import { trackingUrl } from '../_lib/shipping.js'
 
@@ -9,10 +9,10 @@ export default async function handler(req, res) {
   const order = await getOrder(orderId)
   const tracking = String(trackingNumber || order.tracking_number || '').trim()
   const carrierName = String(carrier || order.shipping_carrier || '').trim()
-  if (!tracking) throw new HttpError(400, 'Tracking number is required')
+  // Tracking is optional — stamped envelopes and hand deliveries don't have one.
 
   const { error } = await db().from('orders').update({
-    tracking_number: tracking,
+    tracking_number: tracking || null,
     shipping_carrier: carrierName || null,
     shipped_at: new Date().toISOString(),
     status: 'shipped',
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   if (error) throw new HttpError(500, error.message)
 
   if (notify) {
-    const url = trackingUrl(carrierName, tracking)
+    const url = tracking ? trackingUrl(carrierName, tracking) : null
     await sendEmail({
       to: order.customer_email,
       log: { orderId: order.id, kind: 'shipped' },
@@ -28,8 +28,9 @@ export default async function handler(req, res) {
       html: layout({
         heading: 'Your order shipped!',
         body: `<p style="margin:0;">Hey ${esc(firstName(order.customer_name))}! Your ${esc(order.product_type)} order is packed up and on its way.</p>
-          ${panel('Tracking', rows([['Carrier', esc(carrierName)], ['Tracking #', `<strong>${esc(tracking)}</strong>`]]))}
-          ${button('Track your package →', url)}`,
+          ${tracking
+            ? `${panel('Tracking', rows([['Carrier', esc(carrierName)], ['Tracking #', `<strong>${esc(tracking)}</strong>`]]))}${button('Track your package →', url)}`
+            : `${carrierName ? `<p style="margin:14px 0 0;">It's coming by <strong>${esc(carrierName)}</strong>.</p>` : ''}${button('View your order', `${APP_URL}/quote/${order.id}`)}`}`,
       }),
     })
   }
