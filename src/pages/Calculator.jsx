@@ -198,7 +198,7 @@ function Calculator() {
             {order ? (
               <div style={{ marginTop: 4, lineHeight: 1.6 }}>
                 <strong>{order.customer_name}</strong> · {order.product_type} × {order.quantity}
-                <div style={ui.muted}>The request below is the AI prompt — edit it and tap Estimate again if you want. Applying saves the quote to this order.</div>
+                <div style={ui.muted}>The request below is what the pricing assistant reads — edit it and tap Estimate again if you want. Applying saves the quote to this order.</div>
               </div>
             ) : !orderError && <div style={ui.muted}>Loading the request…</div>}
             {orderError && <div style={{ ...ui.error, marginTop: 8 }}>{orderError}</div>}
@@ -208,7 +208,7 @@ function Calculator() {
 
         {/* AI estimate */}
         <section style={ui.card} className="no-print">
-          <h2 style={ui.h2}>✨ AI estimate</h2>
+          <h2 style={ui.h2}>✨ Pricing assistant</h2>
           <TextArea rows={orderId ? 10 : 3} value={description} onChange={e => setDescription(e.target.value)}
             placeholder='e.g. "12 personalized 3D printed keychains with names" or "50 custom 3-inch logo stickers, glossy"' />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>

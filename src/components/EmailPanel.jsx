@@ -103,7 +103,7 @@ export default function EmailPanel({ order, flash }) {
               options={[{ value: '', label: 'Choose a template…' }, ...EMAIL_TEMPLATES.map(t => ({ value: t.key, label: t.label }))]} />
           </Field>
           <Field label="Subject" style={{ marginTop: 10 }}><Input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
-          <Field label="Message" style={{ marginTop: 10 }} hint="Write it however it comes out — “Polish with Claude” will tidy it up in your voice.">
+          <Field label="Message" style={{ marginTop: 10 }} hint="Write it however it comes out — “Polish it” will tidy it up in your voice.">
             <TextArea rows={8} value={message} onChange={e => setMessage(e.target.value)} />
           </Field>
           <Field label="Link button" style={{ marginTop: 10 }}>
@@ -111,7 +111,7 @@ export default function EmailPanel({ order, flash }) {
           </Field>
           <div style={{ ...ui.row, marginTop: 12 }}>
             <Button small loading={sending} disabled={!subject.trim() || !message.trim()} onClick={send}>Send email</Button>
-            <Button small variant="ghost" loading={polishing} disabled={!message.trim()} onClick={polish}>✨ Polish with Claude</Button>
+            <Button small variant="ghost" loading={polishing} disabled={!message.trim()} onClick={polish}>✨ Polish it</Button>
             <Button small variant="ghost" onClick={() => setComposing(false)}>Cancel</Button>
           </div>
         </div>

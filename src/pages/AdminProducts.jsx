@@ -625,13 +625,13 @@ function ListingAssistant({ p, setP, flash }) {
 
   return (
     <div style={styles.aiBox}>
-      <div style={{ ...ui.eyebrow, marginBottom: 6 }}>✨ Write the listing with Claude</div>
+      <div style={{ ...ui.eyebrow, marginBottom: 6 }}>✨ Listing assistant</div>
       <TextArea rows={3} value={notes} onChange={e => setNotes(e.target.value)}
         placeholder={p.kind === 'digital'
           ? 'What is it? e.g. "12 blush floral digital papers, 12x12 JPG at 300dpi, commercial use OK, great for scrapbooking & sublimation"'
           : 'What is it? e.g. "3D printed name keychain, PLA silk, any name up to 10 letters, 5 colors, about 3 inches wide"'} />
-      <div style={{ ...ui.hint, margin: '6px 0 10px' }}>Claude reads your notes and photos, writes the title, description and options in the studio’s voice, and suggests a price. It only states facts you give it.</div>
-      <Button small variant="gradient" loading={busy} onClick={write}>{busy ? 'Writing…' : p.description ? 'Rewrite with Claude' : 'Write with Claude'}</Button>
+      <div style={{ ...ui.hint, margin: '6px 0 10px' }}>Reads your notes and photos, writes the title, description and options in the studio’s voice, and suggests a price. It only states facts you give it.</div>
+      <Button small variant="gradient" loading={busy} onClick={write}>{busy ? 'Writing…' : p.description ? 'Rewrite the listing' : 'Write the listing'}</Button>
       {result && (
         <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.6 }}>
           {result.suggestedPrice != null && (
@@ -688,10 +688,10 @@ function ImageStudio({ p, setP, flash }) {
 
   return (
     <div style={styles.aiBox}>
-      <div style={{ ...ui.eyebrow, marginBottom: 6 }}>🎨 Create listing photos with Gemini</div>
+      <div style={{ ...ui.eyebrow, marginBottom: 6 }}>🎨 Photo assistant</div>
       {photos.length > 0 ? (
         <>
-          <div style={ui.hint}>Start from your photo — Gemini keeps the product as-is and restyles the scene. Tap the photo to use:</div>
+          <div style={ui.hint}>Start from your photo — the product stays exactly as made and only the scene is restyled. Tap the photo to use:</div>
           <div style={{ display: 'flex', gap: 6, margin: '8px 0', flexWrap: 'wrap' }}>
             {photos.map(u => (
               <img key={u} src={u} alt="" onClick={() => setSource(u)}

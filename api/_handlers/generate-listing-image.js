@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   requireMethod(req, 'POST')
   await requireAdmin(req)
   const key = process.env.GEMINI_API_KEY
-  if (!key) throw new HttpError(500, 'GEMINI_API_KEY is not set')
+  if (!key) throw new HttpError(500, 'The photo assistant isn’t set up yet (missing GEMINI_API_KEY)')
 
   const b = req.body || {}
   const style = STYLES[b.style] ? b.style : 'studio'
@@ -57,13 +57,13 @@ export default async function handler(req, res) {
   const data = await resp.json().catch(() => ({}))
   if (!resp.ok) {
     console.error('Gemini error:', resp.status, JSON.stringify(data).slice(0, 500))
-    throw new HttpError(resp.status === 429 ? 429 : 502, data.error?.message || `Gemini error (${resp.status})`)
+    throw new HttpError(resp.status === 429 ? 429 : 502, resp.status === 429 ? 'The photo assistant is busy — try again in a minute' : `The photo assistant isn’t responding right now (${resp.status}) — try again shortly`)
   }
 
   const out = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.data)?.inlineData
   if (!out) {
     const reason = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason
-    throw new HttpError(422, reason ? `Gemini didn't return an image (${reason}) — try another style or photo` : 'Gemini didn’t return an image — try again')
+    throw new HttpError(422, reason ? `The photo assistant couldn’t make that one (${reason}) — try another style or photo` : 'The photo assistant didn’t return a photo — try again')
   }
 
   const ext = out.mimeType === 'image/jpeg' ? 'jpg' : 'png'

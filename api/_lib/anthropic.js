@@ -5,7 +5,7 @@ import { HttpError } from './core.js'
 export const CLAUDE_MODEL = 'claude-opus-4-8'
 
 export function claudeClient() {
-  if (!process.env.ANTHROPIC_API_KEY) throw new HttpError(500, 'ANTHROPIC_API_KEY is not set')
+  if (!process.env.ANTHROPIC_API_KEY) throw new HttpError(500, 'The assistant isn’t set up yet (missing ANTHROPIC_API_KEY)')
   return new Anthropic()
 }
 
@@ -15,12 +15,12 @@ export async function parseWithClaude(params) {
   try {
     response = await claudeClient().messages.parse({ model: CLAUDE_MODEL, max_tokens: 16000, thinking: { type: 'adaptive' }, ...params })
   } catch (e) {
-    if (e instanceof Anthropic.RateLimitError) throw new HttpError(429, 'Claude is busy — try again in a minute')
-    if (e instanceof Anthropic.BadRequestError) throw new HttpError(400, `Claude rejected the request: ${e.message}`)
-    if (e instanceof Anthropic.APIError) throw new HttpError(502, `Claude service error (${e.status})`)
+    if (e instanceof Anthropic.RateLimitError) throw new HttpError(429, 'The assistant is busy — try again in a minute')
+    if (e instanceof Anthropic.BadRequestError) throw new HttpError(400, `The assistant couldn’t read that request: ${e.message}`)
+    if (e instanceof Anthropic.APIError) throw new HttpError(502, `The assistant isn’t responding right now (${e.status}) — try again shortly`)
     throw e
   }
-  if (response.stop_reason === 'refusal') throw new HttpError(422, 'Claude declined this request — try rewording it')
-  if (response.stop_reason === 'max_tokens' || !response.parsed_output) throw new HttpError(502, 'Claude’s response was incomplete — try again')
+  if (response.stop_reason === 'refusal') throw new HttpError(422, 'The assistant couldn’t help with that — try rewording it')
+  if (response.stop_reason === 'max_tokens' || !response.parsed_output) throw new HttpError(502, 'The assistant’s answer was cut off — try again')
   return response.parsed_output
 }

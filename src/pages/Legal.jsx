@@ -31,7 +31,7 @@ export function PrivacyPage() {
         <li>To make, ship or hand off your order, and to send order emails (receipts, quotes, proofs, shipping and pickup updates, download links).</li>
         <li>To ask once if you’d like to leave a review after your order is complete.</li>
         <li>To answer your questions and keep records for taxes and accounting.</li>
-        <li>For custom requests, we may use an AI tool to help prepare a price estimate from your request details and photos. A person (us) reviews every quote before it’s sent.</li>
+        <li>For custom requests, we may use a pricing assistant service to help prepare an estimate from your request details and photos. A person (us) reviews every quote before it’s sent.</li>
       </ul>
       <p>We don’t send marketing newsletters from this site, and we don’t use advertising or tracking cookies.</p>
 
@@ -45,7 +45,7 @@ export function PrivacyPage() {
         <li><strong>Supabase</strong> — secure storage for orders and uploaded files.</li>
         <li><strong>Vercel</strong> — hosts this website.</li>
         <li><strong>Resend</strong> — sends our emails.</li>
-        <li><strong>Anthropic</strong> — the AI tool that may help us estimate custom quotes.</li>
+        <li><strong>A pricing assistant service</strong> — may help us estimate custom quotes from your request details.</li>
         <li><strong>Shipping carriers</strong> (like USPS or UPS) — your name and address on the label.</li>
       </ul>
       <p>We share information if the law requires it. We <strong>never sell or rent</strong> your personal information.</p>

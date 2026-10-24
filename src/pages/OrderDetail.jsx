@@ -424,13 +424,13 @@ function QuoteSection({ order, payments, update, flash, reload, sendStage, onCop
       {canUseCalculator && (
         <div style={styles.aiQuote}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontWeight: 700 }}>✨ {fromCalculator ? 'Priced with the AI calculator' : 'Price this request with the AI calculator'}</div>
+            <div style={{ fontWeight: 700 }}>✨ {fromCalculator ? 'Priced with the pricing assistant' : 'Price this request with the pricing assistant'}</div>
             <div style={ui.hint}>{fromCalculator
               ? 'Open it again to adjust supplies, labor or markup.'
-              : 'Claude reads the request and the customer’s photos, estimates supplies and labor, and you review before anything is sent.'}</div>
+              : 'It reads the request and the customer’s photos, estimates supplies and labor, and you review before anything is sent.'}</div>
           </div>
           <Button small variant="gradient" onClick={() => navigate(`/dashboard/calculator?order=${order.id}`)}>
-            {fromCalculator ? 'Open in calculator' : 'Quote with AI'}
+            {fromCalculator ? 'Open pricing assistant' : 'Get a price estimate'}
           </Button>
         </div>
       )}
