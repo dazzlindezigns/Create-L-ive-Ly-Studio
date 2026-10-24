@@ -76,3 +76,36 @@ export function verifyStripeEvent(rawBody, header, secret = process.env.STRIPE_W
   if (!match || Math.abs(Date.now() / 1000 - Number(t)) > 300) return null
   return JSON.parse(rawBody)
 }
+
+// Refunds `amount` dollars of one Checkout payment back to the buyer's card.
+// Older payment rows may only have the session id, so look the PaymentIntent up from it.
+// Docs: https://docs.stripe.com/api/refunds/create
+export async function createRefund({ paymentIntentId, sessionId, amount, orderId, note }) {
+  const auth = { Authorization: `Bearer ${stripeKey()}` }
+  let intent = paymentIntentId
+  if (!intent && sessionId) {
+    const r = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, { headers: auth })
+    const s = await r.json().catch(() => ({}))
+    intent = typeof s.payment_intent === 'string' ? s.payment_intent : s.payment_intent?.id
+  }
+  if (!intent) throw new HttpError(400, 'Could not find this card payment in Stripe')
+
+  const params = new URLSearchParams({
+    payment_intent: intent,
+    amount: String(Math.round(round2(amount) * 100)),
+    reason: 'requested_by_customer',
+    'metadata[order_id]': orderId,
+  })
+  if (note) params.set('metadata[note]', String(note).slice(0, 450))
+  const resp = await fetch('https://api.stripe.com/v1/refunds', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/x-www-form-urlencoded', 'Idempotency-Key': crypto.randomUUID() },
+    body: params.toString(),
+  })
+  const refund = await resp.json().catch(() => ({}))
+  if (!resp.ok || !refund.id) {
+    console.error('Stripe refund error:', resp.status, JSON.stringify(refund))
+    throw new HttpError(502, `Stripe: ${refund.error?.message || 'the refund did not go through'}`)
+  }
+  return refund
+}

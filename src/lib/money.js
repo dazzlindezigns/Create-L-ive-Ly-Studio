@@ -36,3 +36,19 @@ export function paymentOptions(order) {
   }
   return { price, paid, remaining, deposit, options }
 }
+
+// What can still be refunded, per payment: card payments first (they go back to the card
+// through Stripe), newest first; then payments made another way (she returns those herself).
+// payments = rows from the payments table; refunds are rows with kind 'refund' and refund_of.
+export function refundable(payments = []) {
+  const refunded = (id) => payments.filter(r => r.kind === 'refund' && r.refund_of === id).reduce((s, r) => s + Number(r.amount || 0), 0)
+  const isCard = (p) => Boolean(p.stripe_payment_intent_id || p.stripe_session_id)
+  const list = payments
+    .filter(p => p.status === 'paid' && p.kind !== 'refund')
+    .map(p => ({ payment: p, card: isCard(p), left: round2(Number(p.amount || 0) - refunded(p.id)) }))
+    .filter(x => x.left > 0)
+    .sort((a, b) => (b.card - a.card) || new Date(b.payment.paid_at || b.payment.created_at) - new Date(a.payment.paid_at || a.payment.created_at))
+  const total = round2(list.reduce((s, x) => s + x.left, 0))
+  const card = round2(list.filter(x => x.card).reduce((s, x) => s + x.left, 0))
+  return { list, total, card, other: round2(total - card) }
+}

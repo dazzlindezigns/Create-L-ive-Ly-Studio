@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   requireMethod(req, 'GET')
   const order = await getOrder(req.query.id)
   if (!digitalLines(order).length) throw new HttpError(404, 'This order has no digital downloads')
-  if (['cancelled', 'declined'].includes(order.status)) throw new HttpError(403, 'This order is no longer active')
+  if (['cancelled', 'declined', 'refunded'].includes(order.status)) throw new HttpError(403, 'This order is no longer active')
 
   res.setHeader('Cache-Control', 'no-store')
   if (!isPaidInFull(order)) {

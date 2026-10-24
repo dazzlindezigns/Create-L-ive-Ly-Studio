@@ -634,19 +634,34 @@ function ImageStudio({ p, setP, flash }) {
   )
 }
 
+const BLANK_CODE = { code: '', discount_type: 'percent', discount_value: '', min_order: '', max_uses: '', expires_at: '' }
+const codeForm = (c) => ({
+  code: c.code, discount_type: c.discount_type, discount_value: c.discount_value ?? '', min_order: c.min_order ?? '',
+  max_uses: c.max_uses ?? '', expires_at: c.expires_at ? new Date(c.expires_at).toLocaleDateString('en-CA') : '',
+})
+
 function DiscountCodes({ codes, reload, flash }) {
-  const [n, setN] = useState({ code: '', discount_type: 'percent', discount_value: '', max_uses: '', expires_at: '' })
+  const [n, setN] = useState(BLANK_CODE)
+  const [editing, setEditing] = useState(null) // code id being edited, or null for a new code
   const set = (k) => (e) => setN(p => ({ ...p, [k]: e.target.value }))
 
-  const add = async () => {
+  const save = async () => {
     if (!n.code.trim() || !(Number(n.discount_value) > 0)) return flash('Code and value are required', 'error')
-    const { error } = await supabase.from('discount_codes').insert({
+    const row = {
       code: n.code.trim().toUpperCase(), discount_type: n.discount_type, discount_value: Number(n.discount_value),
+      min_order: Number(n.min_order) > 0 ? round2(n.min_order) : null,
       max_uses: n.max_uses ? parseInt(n.max_uses, 10) : null, expires_at: n.expires_at ? new Date(n.expires_at + 'T23:59:59').toISOString() : null,
-    })
-    if (error) return flash(error.message, 'error')
-    setN({ code: '', discount_type: 'percent', discount_value: '', max_uses: '', expires_at: '' })
-    flash('Code created'); reload()
+    }
+    const { error } = editing
+      ? await supabase.from('discount_codes').update(row).eq('id', editing)
+      : await supabase.from('discount_codes').insert(row)
+    if (error) {
+      return flash(/min_order/.test(error.message)
+        ? 'Minimum order needs a quick database update — run 20261025000000_refunds_and_code_minimums.sql in Supabase'
+        : error.message, 'error')
+    }
+    flash(editing ? 'Code updated' : 'Code created')
+    setN(BLANK_CODE); setEditing(null); reload()
   }
 
   const toggle = async (c) => {
@@ -658,27 +673,36 @@ function DiscountCodes({ codes, reload, flash }) {
     <section style={ui.card}>
       <h2 style={ui.h2}>Discount codes</h2>
       {(codes || []).map(c => (
-        <div key={c.id} style={styles.codeRow}>
-          <div>
-            <div style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 15 }}>{c.code}</div>
+        <div key={c.id} style={{ ...styles.codeRow, ...(editing === c.id ? { background: 'var(--card2)', margin: '0 -10px', padding: '10px' } : {}) }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 15, opacity: c.active ? 1 : 0.5 }}>{c.code}</div>
             <div style={ui.muted}>
-              {c.discount_type === 'percent' ? `${c.discount_value}% off` : `${fmt(c.discount_value)} off`} · used {c.uses || 0}{c.max_uses ? `/${c.max_uses}` : ''}
+              {c.discount_type === 'percent' ? `${c.discount_value}% off` : `${fmt(c.discount_value)} off`}
+              {Number(c.min_order) > 0 ? ` · orders ${fmt(c.min_order)}+` : ''} · used {c.uses || 0}{c.max_uses ? `/${c.max_uses}` : ''}
               {c.expires_at ? ` · ends ${new Date(c.expires_at).toLocaleDateString()}` : ''}
             </div>
           </div>
-          <Button small variant={c.active ? 'ghost' : 'secondary'} onClick={() => toggle(c)}>{c.active ? 'Disable' : 'Enable'}</Button>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <Button small variant="ghost" onClick={() => { setEditing(c.id); setN(codeForm(c)) }}>Edit</Button>
+            <Button small variant={c.active ? 'ghost' : 'secondary'} onClick={() => toggle(c)}>{c.active ? 'Disable' : 'Enable'}</Button>
+          </div>
         </div>
       ))}
-      <div style={{ ...ui.row, marginTop: 14 }}>
+      <div style={{ ...ui.eyebrow, marginTop: 16 }}>{editing ? `Editing ${n.code || 'code'}` : 'New code'}</div>
+      <div style={{ ...ui.row, marginTop: 8 }}>
         <Field label="Code"><Input value={n.code} onChange={set('code')} placeholder="STICKY10" /></Field>
         <Field label="Type"><Select value={n.discount_type} onChange={set('discount_type')} options={[{ value: 'percent', label: '% off' }, { value: 'fixed', label: '$ off' }]} /></Field>
         <Field label="Value"><Input type="number" value={n.discount_value} onChange={set('discount_value')} /></Field>
       </div>
       <div style={{ ...ui.row, marginTop: 10 }}>
+        <Field label="Minimum order $ (optional)" hint="Cart total after Stack & Save, before shipping"><Input type="number" step="0.01" min="0" inputMode="decimal" value={n.min_order} onChange={set('min_order')} placeholder="No minimum" /></Field>
         <Field label="Max uses (optional)"><Input type="number" value={n.max_uses} onChange={set('max_uses')} /></Field>
         <Field label="Expires (optional)"><Input type="date" value={n.expires_at} onChange={set('expires_at')} /></Field>
       </div>
-      <Button small onClick={add} style={{ marginTop: 12 }}>Create code</Button>
+      <div style={{ ...ui.row, marginTop: 12 }}>
+        <Button small onClick={save}>{editing ? 'Save changes' : 'Create code'}</Button>
+        {editing && <Button small variant="ghost" onClick={() => { setEditing(null); setN(BLANK_CODE) }}>Cancel</Button>}
+      </div>
     </section>
   )
 }

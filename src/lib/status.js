@@ -21,12 +21,13 @@ export const STATUS = {
   completed:           s('Complete',           COLORS.success),
   declined:            s('Declined',           COLORS.danger),
   cancelled:           s('Cancelled',          '#888888'),
+  refunded:            s('Refunded',           COLORS.danger),
 }
 
 export const STATUS_ORDER = Object.keys(STATUS)
 
 // Three kinds of orders, three flows:
-//   shop    — a physical item bought in the shop: paid → pack/make → ship or pickup → complete
+//   shop    — a physical item bought in the shop: paid → in production → ship or pickup → complete
 //   digital — downloads only: complete the moment it's paid (the download link is emailed)
 //   custom  — a request or invoice: quote → paid → proof → make → ship or pickup → complete
 export const orderFlow = (o) => o.source === 'shop' ? (o.fulfillment === 'digital' ? 'digital' : 'shop') : 'custom'
@@ -48,7 +49,7 @@ export function stepsFor(o) {
   const flow = orderFlow(o)
   const handoff = o.fulfillment === 'shipping' ? 'Shipped' : 'Ready'
   const steps = flow === 'digital' ? [['Paid', ['payment_pending']], ['Delivered', ['completed']]]
-    : flow === 'shop' ? [['Paid', ['payment_pending']], ['Pack', ['confirmed', 'in_production']], [handoff, ['ready_for_pickup', 'shipped']], ['Done', ['completed']]]
+    : flow === 'shop' ? [['Paid', ['payment_pending']], ['Make', ['confirmed', 'in_production']], [handoff, ['ready_for_pickup', 'shipped']], ['Done', ['completed']]]
     : [['Quote', ['pending', 'quote_sent', 'invoice_sent', 'payment_pending']], ['Proof', ['confirmed', 'proof_sent', 'revisions_requested']],
        ['Make', ['proof_approved', 'in_production']], [handoff, ['ready_for_pickup', 'shipped']], ['Done', ['completed']]]
   const current = steps.findIndex(([, statuses]) => statuses.includes(o.status))
@@ -63,8 +64,8 @@ export function stepsFor(o) {
 export function nextStep(o) {
   const flow = orderFlow(o)
   const handoff = o.fulfillment === 'shipping'
-    ? { label: '📦 Mark shipped', action: 'ship', short: 'Ship it', hint: 'Add the tracking number — the customer gets a tracking email.' }
-    : { label: '🎉 Ready for pickup', action: 'status', status: 'ready_for_pickup', email: 'ready_for_pickup', short: 'Ready for pickup', hint: 'Tells the customer it’s ready and asks when they’ll come by.' }
+    ? { label: '📦 Mark shipped', action: 'ship', short: 'Ship it', hint: 'Add the tracking number if there is one.' }
+    : { label: '🎉 Ready for pickup', action: 'status', status: 'ready_for_pickup', email: 'ready_for_pickup', short: 'Ready for pickup', hint: 'Lets them know it’s ready and asks when they’ll come by.' }
 
   switch (o.status) {
     case 'pending':
@@ -76,15 +77,14 @@ export function nextStep(o) {
     case 'confirmed':
       if (flow === 'custom') return { label: '🖼 Send the proof', action: 'proof', short: 'Send proof', hint: 'Upload the design below and email it for approval.',
         alt: { label: 'No proof needed — start making', status: 'in_production', email: 'in_production' } }
-      return { ...handoff, short: o.fulfillment === 'shipping' ? 'Pack & ship' : 'Pack for pickup',
-        alt: { label: 'Needs to be made first? Mark in production', status: 'in_production', email: 'in_production' } }
+      return { label: '✂️ Start making it', action: 'status', status: 'in_production', email: 'in_production', short: 'Start making', hint: 'Lets them know it’s being made.' }
     case 'proof_sent':
       return { waiting: 'Waiting for the customer to approve the proof.', short: 'Waiting on approval',
         alt: { label: 'They approved by text — mark approved', status: 'proof_approved' } }
     case 'revisions_requested':
       return { label: '✏️ Send the updated proof', action: 'proof', short: 'Update proof', hint: 'Their notes are in the Proofs section below.' }
     case 'proof_approved':
-      return { label: '✂️ Start making it', action: 'status', status: 'in_production', email: 'in_production', short: 'Start making', hint: 'Lets the customer know it’s being made.' }
+      return { label: '✂️ Start making it', action: 'status', status: 'in_production', email: 'in_production', short: 'Start making', hint: 'Lets them know it’s being made.' }
     case 'in_production':
       return handoff
     case 'ready_for_pickup':

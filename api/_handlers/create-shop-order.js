@@ -4,7 +4,7 @@ import { sendDownloadEmail } from '../_lib/downloads.js'
 import { layout, rows, button, sendEmail, emailMaker, esc } from '../_lib/email.js'
 import { createCheckoutSession } from '../_lib/stripe.js'
 import { notifyAdmins } from '../_lib/push.js'
-import { storageUrlsOnly, cleanAddress } from '../_lib/validate.js'
+import { cleanAddress } from '../_lib/validate.js'
 import { fmt } from '../../src/lib/money.js'
 import { tiersFromSettings } from '../../src/lib/cart.js'
 
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
   if (cart.total > 0 && cart.total < 0.5) throw new HttpError(400, 'Card payments must be at least $0.50 — add another item or use a different code.')
 
   const productType = cart.lines.length === 1 ? cart.lines[0].productName : `Shop order (${cart.lines.length} items)`
-  const notes = String(b.notes || '').trim().slice(0, 2000)
+  // Shop items are made as shown: checkout takes no notes or design files (custom work goes through /custom).
 
   const { data: order, error } = await supabase.from('orders').insert({
     product_type: productType,
@@ -59,7 +59,6 @@ export default async function handler(req, res) {
     customer_name: customerName.slice(0, 200),
     customer_email: customerEmail,
     customer_phone: String(b.customerPhone || '').trim().slice(0, 40) || null,
-    notes: notes || null,
     fulfillment,
     shipping_address: shippingAddress,
     status: 'payment_pending',
@@ -68,7 +67,6 @@ export default async function handler(req, res) {
     shop_cart: cart.lines,
     shop_discount_code: cart.discount?.code || null,
     shop_discount_amount: cart.codeDiscount || null,
-    image_urls: storageUrlsOnly(b.designFiles, 'order-files'),
     quote_breakdown: {
       lines: cart.lines.map(l => ({ description: `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' — digital download' : ''}`, qty: l.quantity, unitPrice: l.unitPrice })),
     },

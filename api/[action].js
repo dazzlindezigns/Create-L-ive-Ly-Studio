@@ -35,6 +35,7 @@ const routes = {
   'send-downloads':      () => import('./_handlers/send-downloads.js'),
   'send-customer-email': () => import('./_handlers/send-customer-email.js'),
   'draft-email':         () => import('./_handlers/draft-email.js'),
+  'refund-order':        () => import('./_handlers/refund-order.js'),
 }
 
 export default async function handler(req, res) {

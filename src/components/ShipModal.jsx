@@ -11,7 +11,6 @@ export default function ShipModal({ order, onClose, onDone }) {
   const [carrier, setCarrier] = useState(known || (order.shipping_carrier ? 'Other' : 'USPS'))
   const [otherCarrier, setOtherCarrier] = useState(known ? '' : order.shipping_carrier || '')
   const [tracking, setTracking] = useState(order.tracking_number || '')
-  const [notify, setNotify] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -23,9 +22,9 @@ export default function ShipModal({ order, onClose, onDone }) {
     try {
       await api('mark-shipped', {
         auth: true,
-        body: { orderId: order.id, trackingNumber: tracking.trim(), carrier: carrier === 'Other' ? otherCarrier.trim() : carrier, notify },
+        body: { orderId: order.id, trackingNumber: tracking.trim(), carrier: carrier === 'Other' ? otherCarrier.trim() : carrier },
       })
-      onDone(notify ? 'Marked shipped — customer emailed ✉️' : 'Marked shipped')
+      onDone('Marked shipped — customer emailed ✉️')
     } catch (e) { setError(e.message); setBusy(false) }
   }
 
@@ -44,9 +43,7 @@ export default function ShipModal({ order, onClose, onDone }) {
           {carrier === 'Other' && <Field label="Carrier name"><Input value={otherCarrier} onChange={e => setOtherCarrier(e.target.value)} /></Field>}
         </div>
         <Field label="Tracking number" hint="Optional — leave blank for a stamped envelope or hand delivery."><Input value={tracking} onChange={e => setTracking(e.target.value)} autoFocus /></Field>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
-          <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} /> Email the customer that it shipped{tracking.trim() ? ' (with the tracking link)' : ''}
-        </label>
+        <div style={ui.hint}>✉️ The customer gets a “your order shipped” email{tracking.trim() ? ' with the tracking link' : ''}.</div>
         {error && <div style={ui.error}>{error}</div>}
         <Button block loading={busy} onClick={save}>{tracking.trim() ? 'Mark shipped' : 'Mark shipped (no tracking)'}</Button>
       </div>

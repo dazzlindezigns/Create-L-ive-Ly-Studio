@@ -12,6 +12,7 @@ export default async function handler(req, res) {
     code: d.code,
     type: d.discount_type,
     value: Number(d.discount_value),
+    minOrder: Number(d.min_order) || 0,
     discountAmount: discountAmount(d, Number(subtotal) || 0),
   })
 }

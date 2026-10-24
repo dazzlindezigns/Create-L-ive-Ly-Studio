@@ -70,6 +70,7 @@ export default function OrderDocument({ order }) {
         {order.deposit_type !== 'full' && paid === 0 && deposit < Number(order.price) && <Row k="Deposit due to start" v={fmt(deposit)} />}
         {paid > 0 && <Row k="Paid" v={`−${fmt(paid)}`} />}
         <Row k={remaining > 0 ? 'Balance due' : 'Balance'} v={remaining > 0 ? fmt(remaining) : 'Paid in full'} bold />
+        {Number(order.refunded_amount) > 0 && <Row k={`Refunded${order.refunded_at ? ` ${date(order.refunded_at)}` : ''}`} v={fmt(order.refunded_amount)} bold />}
       </div>
 
       {(order.turnaround || order.quote_note) && (

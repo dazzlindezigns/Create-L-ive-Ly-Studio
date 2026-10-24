@@ -60,7 +60,7 @@ export function resolveOptions(p, wanted = {}) {
 
 export const isSticker = (p) => p.collection === STICKER_BAR.collection
 
-// code = discount_codes row shape: { discount_type: 'percent'|'fixed', discount_value }
+// code = discount_codes row shape: { discount_type: 'percent'|'fixed', discount_value, min_order }
 export function discountAmount(code, base) {
   if (!code) return 0
   const v = Number(code.discount_value) || 0
@@ -78,7 +78,10 @@ export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, fr
   const stackDiscount = stackTier ? round2(sum(stack, l => l.itemTotal) * stackTier.pct / 100) : 0
 
   const afterTiers = round2(subtotal - stackDiscount)
-  const codeDiscount = discountAmount(code, afterTiers)
+  // A code with a minimum only applies once the cart (after Stack & Save, before shipping) reaches it.
+  const codeMin = Number(code?.min_order) || 0
+  const codeShort = code && codeMin > 0 && afterTiers < codeMin ? round2(codeMin - afterTiers) : 0
+  const codeDiscount = codeShort ? 0 : discountAmount(code, afterTiers)
   const merchandise = round2(afterTiers - codeDiscount)
 
   const fee = round2(shippingFee)
@@ -86,5 +89,5 @@ export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, fr
   const freeShipping = fee > 0 && threshold > 0 && merchandise >= threshold
   const shipping = freeShipping ? 0 : fee
   const total = Math.max(0, round2(merchandise + shipping))
-  return { subtotal, stackTier, stackDiscount, codeDiscount, merchandise, freeShipping, shipping, total }
+  return { subtotal, stackTier, stackDiscount, codeDiscount, codeMin, codeShort, merchandise, freeShipping, shipping, total }
 }

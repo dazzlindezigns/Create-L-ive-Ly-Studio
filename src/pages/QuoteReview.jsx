@@ -110,6 +110,7 @@ export default function QuoteReview() {
             )}
             {paid > 0 && <div style={styles.totalRow}><span>Paid</span><strong style={{ color: 'var(--success)' }}>−{fmt(paid)}</strong></div>}
             {paid > 0 && <div style={styles.totalRow}><span>Balance</span><strong>{remaining > 0 ? fmt(remaining) : 'Paid in full ✓'}</strong></div>}
+            {Number(order.refunded_amount) > 0 && <div style={styles.totalRow}><span>Refunded to you</span><strong>{fmt(order.refunded_amount)}</strong></div>}
             {order.turnaround && <div style={{ ...ui.muted, marginTop: 8 }}>Turnaround: {order.turnaround}</div>}
           </div>
         )}

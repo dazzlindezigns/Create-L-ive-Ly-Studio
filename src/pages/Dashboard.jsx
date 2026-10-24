@@ -21,7 +21,7 @@ export default function Dashboard() {
   const loadOrders = async () => {
     const { data, error } = await supabase
       .from('orders')
-      .select('id, created_at, customer_name, customer_email, product_type, quantity, status, price, amount_paid, need_by, source, fulfillment')
+      .select('*') // '*' so the list still loads if a newer column (e.g. refunded_amount) hasn't been added yet
       .order('created_at', { ascending: false })
       .limit(500)
     if (error) flash(error.message, 'error')
@@ -68,7 +68,7 @@ export default function Dashboard() {
     return list
   }, [orders, filter, search])
 
-  const revenue = (orders || []).reduce((s, o) => s + (Number(o.amount_paid) || 0), 0)
+  const revenue = (orders || []).reduce((s, o) => s + (Number(o.amount_paid) || 0) - (Number(o.refunded_amount) || 0), 0)
   const todoCount = (orders || []).filter(FILTER_TABS[0].match).length
 
   return (

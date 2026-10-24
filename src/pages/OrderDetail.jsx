@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
-import { fmt, round2, paymentOptions, depositFor } from '../lib/money'
+import { fmt, round2, paymentOptions, depositFor, refundable } from '../lib/money'
 import { STATUS, orderFlow, statusesFor, stepsFor, nextStep } from '../lib/status'
 import { trackingUrl } from '../../api/_lib/shipping.js'
 import { BRAND, PRODUCT_TYPES } from '../brand'
@@ -27,8 +27,7 @@ export default function OrderDetail() {
   const [shipOpen, setShipOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
-  const [stagePrompt, setStagePrompt] = useState(null)
-  const [stageSending, setStageSending] = useState(false)
+  const [refundOpen, setRefundOpen] = useState(false)
 
   const load = useCallback(async () => {
     const [{ data, error }, { data: pays }] = await Promise.all([
@@ -60,21 +59,25 @@ export default function OrderDetail() {
   const sendStage = (stage) => api('send-status-update', { auth: true, body: { orderId: order.id, stage } })
 
   // The big "next step" button, and the status menu for when a step was skipped or done out of order.
-  const runStep = async (step, { email }) => {
+  // Statuses with a customer email send it automatically, from the button or the menu.
+  const setStatus = async (status) => {
+    if (!(await update({ status }, null))) return
+    if (STAGE_EMAILS[status] && order.customer_email) {
+      try { await sendStage(status); flash(`${STATUS[status].label} — emailed ${firstName} ✉️`); load() }
+      catch (e) { flash(`Status saved, but the email didn’t send: ${e.message}`, 'error') }
+    } else flash(`Status → ${STATUS[status]?.label || status}`)
+  }
+  const runStep = async (step) => {
     if (step.action === 'ship') return setShipOpen(true)
     if (step.action === 'quote' || step.action === 'proof') {
       return document.getElementById(step.action)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-    if (!(await update({ status: step.status }, null))) return
-    if (email && step.email && order.customer_email) {
-      try { await sendStage(step.email); flash(`${STATUS[step.status].label} — emailed ${firstName} ✉️`); load() }
-      catch (e) { flash(`Status saved, but the email didn’t send: ${e.message}`, 'error') }
-    } else flash(`Status → ${STATUS[step.status].label}`)
+    await setStatus(step.status)
   }
   const pickStatus = async (status) => {
     // Shipping always goes through the modal so the tracking email can go out.
     if (status === 'shipped' && order.status !== 'shipped') return setShipOpen(true)
-    if (await update({ status }, `Status → ${STATUS[status]?.label}`)) setStagePrompt(STAGE_EMAILS[status] && order.customer_email ? status : null)
+    await setStatus(status)
   }
 
   const shop = flow !== 'custom'
@@ -95,6 +98,9 @@ export default function OrderDetail() {
                 <a href={`mailto:${order.customer_email}`}>{order.customer_email}</a>
                 {order.customer_phone && <> · <a href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></>}
               </div>
+              {order.fulfillment === 'shipping' && order.shipping_address?.street && (
+                <div style={{ ...ui.muted, marginTop: 2 }}>📦 {[order.shipping_address.street, order.shipping_address.street2, `${order.shipping_address.city}, ${order.shipping_address.state} ${order.shipping_address.zip}`].filter(Boolean).join(', ')}</div>
+              )}
               <div style={{ ...ui.muted, marginTop: 2 }}>{shop ? 'Ordered' : 'Received'} {new Date(order.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</div>
             </div>
             <Badge status={order.status} />
@@ -103,19 +109,6 @@ export default function OrderDetail() {
           <StepTracker order={order} />
           <NextStep order={order} firstName={firstName} onRun={runStep} />
 
-          {stagePrompt && (
-            <div style={styles.stagePrompt}>
-              <span>✉️ Email {firstName} the <strong>{STAGE_EMAILS[stagePrompt]}</strong> update?</span>
-              <span style={{ display: 'flex', gap: 8 }}>
-                <Button small loading={stageSending} onClick={async () => {
-                  setStageSending(true)
-                  try { await sendStage(stagePrompt); flash(`Emailed ${firstName} ✉️`); setStagePrompt(null); load() }
-                  catch (err) { flash(err.message, 'error') } finally { setStageSending(false) }
-                }}>Send email</Button>
-                <Button small variant="ghost" onClick={() => setStagePrompt(null)}>No thanks</Button>
-              </span>
-            </div>
-          )}
 
           <div style={styles.statusRow}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)' }}>
@@ -130,13 +123,13 @@ export default function OrderDetail() {
         <div className="detail-cols">
           <div className="detail-col">
             {shop ? (
-              <ItemsSection order={order} flash={flash} onRecordPayment={() => setPayOpen(true)} sendStage={sendStage} load={load} />
+              <ItemsSection order={order} payments={payments} flash={flash} onRecordPayment={() => setPayOpen(true)} onRefund={() => setRefundOpen(true)} sendStage={sendStage} load={load} />
             ) : (
               <>
                 <RequestSection order={order} />
                 <QuoteSection order={order} payments={payments} update={update} flash={flash} reload={load} sendStage={sendStage}
                   onCopyLink={() => copy(`${APP_URL}/quote/${order.id}`, 'Quote link copied')}
-                  onRecordPayment={() => setPayOpen(true)} />
+                  onRecordPayment={() => setPayOpen(true)} onRefund={() => setRefundOpen(true)} />
                 {/* Proofs come after payment; before that the page is just the request and the quote. */}
                 {(!PRE_PAYMENT.includes(order.status) || order.proof_items?.length > 0 || order.proof_urls?.length > 0) && <ProofSection order={order} update={update} flash={flash} reload={load}
                   onCopyMessage={() => copy(
@@ -168,6 +161,7 @@ export default function OrderDetail() {
 
       {shipOpen && <ShipModal order={order} onClose={() => setShipOpen(false)} onDone={(msg) => { setShipOpen(false); flash(msg); load() }} />}
       {editOpen && <EditModal order={order} onClose={() => setEditOpen(false)} onSave={async (f) => { if (await update(f, 'Details updated')) setEditOpen(false) }} />}
+      {refundOpen && <RefundModal order={order} payments={payments} firstName={firstName} onClose={() => setRefundOpen(false)} onDone={(msg) => { setRefundOpen(false); flash(msg); load() }} />}
       {payOpen && <PaymentModal order={order} onClose={() => setPayOpen(false)} onSaved={(msg) => { setPayOpen(false); flash(msg); load() }} flash={flash} />}
       {toast}
     </div>
@@ -198,15 +192,13 @@ function StepTracker({ order }) {
 
 function NextStep({ order, firstName, onRun }) {
   const step = nextStep(order)
-  const [email, setEmail] = useState(true)
   const [busy, setBusy] = useState(false)
   const run = async (s) => {
     // Scrolling and opening the ship form are instant; only status changes wait on the server.
-    if (s.action !== 'status') return onRun(s, { email })
+    if (s.action !== 'status') return onRun(s)
     setBusy(true)
-    try { await onRun(s, { email }) } finally { setBusy(false) }
+    try { await onRun(s) } finally { setBusy(false) }
   }
-  const canEmail = (s) => s?.email && order.customer_email
 
   return (
     <div style={styles.next}>
@@ -214,12 +206,10 @@ function NextStep({ order, firstName, onRun }) {
         <>
           <div style={ui.eyebrow}>Next step</div>
           <Button loading={busy} onClick={() => run(step)} style={{ marginTop: 8, width: '100%', maxWidth: 420 }}>{step.label}</Button>
-          {canEmail(step) && (
-            <label style={styles.emailCheck}>
-              <input type="checkbox" checked={email} onChange={e => setEmail(e.target.checked)} /> {step.email === 'completed' ? `Send ${firstName} a thank-you email` : `Email ${firstName} the update`}
-            </label>
-          )}
           {step.hint && <div style={ui.hint}>{step.hint}</div>}
+          {(step.email || step.action === 'ship') && order.customer_email && (
+            <div style={{ ...ui.hint, fontWeight: 600 }}>✉️ {firstName} gets {step.email === 'completed' ? 'a thank-you email' : 'an email'} automatically.</div>
+          )}
         </>
       ) : step.waiting ? (
         <div style={{ fontSize: 14 }}><strong>⏳ Waiting</strong><div style={{ ...ui.muted, marginTop: 2 }}>{step.waiting}</div></div>
@@ -234,7 +224,7 @@ function NextStep({ order, firstName, onRun }) {
 }
 
 // ── Shop orders: what they bought and what they paid ───────────────────────
-function ItemsSection({ order, flash, onRecordPayment, sendStage, load }) {
+function ItemsSection({ order, payments, flash, onRecordPayment, onRefund, sendStage, load }) {
   const [sending, setSending] = useState(false)
   const lines = order.shop_cart || []
   // Discount / shipping lines come after the item lines in the description (create-shop-order.js).
@@ -269,11 +259,13 @@ function ItemsSection({ order, flash, onRecordPayment, sendStage, load }) {
           ? <>✓ {Number(order.price) > 0 ? `Paid ${fmt(order.amount_paid)}` : `Free order${order.shop_discount_code ? ` (code ${order.shop_discount_code})` : ''}`}{order.paid_at && ` · ${new Date(order.paid_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}</>
           : <>Not paid yet</>}
       </div>
+      <Refunded order={order} />
       <div style={{ ...ui.row, marginTop: 12 }}>
         {paid ? (
           <>
             <Button variant="ghost" small onClick={() => openPdf(order)}>📄 Download receipt</Button>
             <Button variant="ghost" small loading={sending} onClick={emailReceipt}>✉️ Email receipt</Button>
+            {refundable(payments).total > 0 && <Button variant="ghost" small onClick={onRefund}>↩️ Refund</Button>}
           </>
         ) : (
           <Button variant="ghost" small onClick={onRecordPayment}>They paid another way — record it</Button>
@@ -378,7 +370,7 @@ function PrivateNote({ order, update }) {
 }
 
 // ── Quote + payments ────────────────────────────────────────────────────────
-function QuoteSection({ order, payments, update, flash, reload, sendStage, onCopyLink, onRecordPayment }) {
+function QuoteSection({ order, payments, update, flash, reload, sendStage, onCopyLink, onRecordPayment, onRefund }) {
   const navigate = useNavigate()
   const [q, setQ] = useState({
     price: order.price ?? '',
@@ -504,16 +496,87 @@ function QuoteSection({ order, payments, update, flash, reload, sendStage, onCop
         <div style={{ marginTop: 10 }}>
           {payments.map(p => (
             <div key={p.id} style={styles.line}>
-              <span>{p.kind} · {new Date(p.paid_at || p.created_at).toLocaleDateString()}</span>
-              <span style={{ color: p.status === 'paid' ? 'var(--success)' : 'var(--muted)', fontWeight: 600 }}>{fmt(p.amount)} {p.status === 'paid' ? '✓' : '(link opened)'}</span>
+              <span>{p.kind === 'refund' ? '↩️ refund' : p.kind} · {new Date(p.paid_at || p.created_at).toLocaleDateString()}</span>
+              {p.kind === 'refund'
+                ? <span style={{ color: 'var(--danger)', fontWeight: 600 }}>−{fmt(p.amount)}</span>
+                : <span style={{ color: p.status === 'paid' ? 'var(--success)' : 'var(--muted)', fontWeight: 600 }}>{fmt(p.amount)} {p.status === 'paid' ? '✓' : '(link opened)'}</span>}
             </div>
           ))}
         </div>
       )}
-      <div style={{ marginTop: 12 }}>
-        <Button variant="ghost" small onClick={onRecordPayment}>Record cash / other payment</Button>
+      <Refunded order={order} />
+      <div style={{ ...ui.row, marginTop: 12 }}>
+        {remaining > 0 && <Button variant="ghost" small onClick={onRecordPayment}>Record cash / other payment</Button>}
+        {refundable(payments).total > 0 && <Button variant="ghost" small onClick={onRefund}>↩️ Refund</Button>}
       </div>
     </section>
+  )
+}
+
+// ── Refunds ────────────────────────────────────────────────────────────────
+function Refunded({ order }) {
+  if (!(Number(order.refunded_amount) > 0)) return null
+  return (
+    <div style={{ ...styles.payBox, background: 'rgba(200,65,75,0.08)', color: 'var(--danger)', marginTop: 8 }}>
+      ↩️ Refunded {fmt(order.refunded_amount)}{order.refunded_at && ` · ${new Date(order.refunded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+    </div>
+  )
+}
+
+function RefundModal({ order, payments, firstName, onClose, onDone }) {
+  const avail = refundable(payments)
+  const [mode, setMode] = useState('full')
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const physical = order.source === 'shop' && (order.shop_cart || []).some(l => l.kind === 'physical')
+  const [restock, setRestock] = useState(physical && !['shipped', 'completed'].includes(order.status))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const want = mode === 'full' ? avail.total : round2(amount)
+  // Card money is refunded first, so only the part beyond the card total is hers to hand back.
+  const byHand = Math.max(0, round2(want - avail.card))
+  const valid = want > 0 && want <= avail.total + 0.009
+
+  const submit = async () => {
+    if (!valid) return setError(`Enter an amount up to ${fmt(avail.total)}`)
+    if (!confirm(`Refund ${fmt(want)} to ${order.customer_name}? This can’t be undone.`)) return
+    setBusy(true); setError('')
+    try {
+      await api('refund-order', { auth: true, body: { orderId: order.id, amount: want, note: note.trim() || null, restock: mode === 'full' && restock } })
+      onDone(`Refunded ${fmt(want)} — ${firstName} was emailed ✉️`)
+    } catch (e) { setError(e.message); setBusy(false) }
+  }
+
+  return (
+    <Modal title="Refund" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={styles.toggle}>
+          {[['full', `Full refund · ${fmt(avail.total)}`], ['partial', 'Partial']].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setMode(k)} style={{ ...styles.toggleBtn, ...(mode === k ? styles.toggleOn : {}) }}>{label}</button>
+          ))}
+        </div>
+        {mode === 'partial' && (
+          <Field label="Amount to refund ($)" hint={`Up to ${fmt(avail.total)}`}>
+            <Input type="number" step="0.01" min="0" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} autoFocus />
+          </Field>
+        )}
+        <Field label="Reason (optional — only you see this)"><Input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. arrived damaged" /></Field>
+        {want > 0 && (
+          <div style={{ ...ui.hint, fontSize: 13, lineHeight: 1.5 }}>
+            {want - byHand > 0 && <div>💳 {fmt(want - byHand)} goes back to their card automatically (5–10 business days).</div>}
+            {byHand > 0 && <div>💵 {fmt(byHand)} was paid another way — send that back yourself; the app just records it.</div>}
+          </div>
+        )}
+        {mode === 'full' && physical && (
+          <label style={styles.emailCheck}><input type="checkbox" checked={restock} onChange={e => setRestock(e.target.checked)} /> Put the items back in stock</label>
+        )}
+        <div style={ui.hint}>✉️ {firstName} gets an email that the refund is on its way.</div>
+        {mode === 'full' && <div style={ui.hint}>A full refund closes the order as Refunded{(order.shop_cart || []).some(l => l.kind === 'digital') ? ' and turns off their download link' : ''}.</div>}
+        {error && <div style={ui.error}>{error}</div>}
+        <Button block variant="secondary" loading={busy} disabled={!valid} onClick={submit}>Refund {valid ? fmt(want) : ''}</Button>
+      </div>
+    </Modal>
   )
 }
 
@@ -716,10 +779,12 @@ const styles = {
   stepDone: { background: 'var(--success)', borderColor: 'var(--success)', color: '#fff' },
   stepNow: { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' },
   next: { marginTop: 14, padding: 14, borderRadius: 14, background: 'var(--card2)', border: '1px solid var(--border)' },
+  toggle: { display: 'flex', background: 'var(--card2)', borderRadius: 50, padding: 4, gap: 4 },
+  toggleBtn: { flex: 1, padding: '10px 12px', borderRadius: 50, border: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
+  toggleOn: { background: '#fff', color: 'var(--dark)', boxShadow: '0 1px 6px rgba(0,0,0,0.08)' },
   emailCheck: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginTop: 10, cursor: 'pointer' },
   payBox: { marginTop: 14, padding: '10px 12px', borderRadius: 12, background: 'rgba(199,128,43,0.1)', color: 'var(--warning)', fontWeight: 700, fontSize: 14 },
   payBoxPaid: { background: 'rgba(47,158,98,0.1)', color: 'var(--success)' },
-  stagePrompt: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)', fontSize: 14 },
   aiQuote: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 14, padding: 12, marginBottom: 14 },
   dl: { display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 8, columnGap: 12 },
   pre: { whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6, marginTop: 10, color: 'var(--mid)' },

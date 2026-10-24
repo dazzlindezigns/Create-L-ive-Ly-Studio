@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, uploadFile } from '../lib/api'
+import { api } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { BRAND, COLLECTIONS, STICKER_BAR } from '../brand'
 import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions } from '../lib/cart'
-import { ui, Button, Field, Input, TextArea, Select, Loading, Modal } from '../components/ui'
+import { ui, Button, Field, Input, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 
 const CART_KEY = 'shop-cart-v3'
@@ -376,9 +376,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
   const [discount, setDiscount] = useState(null)
   const [codeMsg, setCodeMsg] = useState('')
   const [showCode, setShowCode] = useState(false)
-  const [f, setF] = useState({ name: '', email: '', phone: '', fulfillment: 'pickup', street: '', street2: '', city: '', state: '', zip: '', notes: '' })
-  const [files, setFiles] = useState([])
-  const [uploading, setUploading] = useState(false)
+  const [f, setF] = useState({ name: '', email: '', phone: '', fulfillment: 'pickup', street: '', street2: '', city: '', state: '', zip: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }))
@@ -392,7 +390,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
     lines.map(l => ({ itemTotal: l.total, quantity: l.quantity, bulkEligible: l.product.bulk_pricing_enabled !== false })),
     {
       stackTiers,
-      code: discount && { discount_type: discount.type, discount_value: discount.value },
+      code: discount && { discount_type: discount.type, discount_value: discount.value, min_order: discount.minOrder },
       shippingFee: hasPhysical && f.fulfillment === 'shipping' ? fee : 0,
       freeShippingOver: freeOver,
     },
@@ -404,24 +402,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
   const applyCode = async () => {
     setCodeMsg('')
     const r = await api('validate-discount', { body: { code, subtotal: afterBulk } }).catch(e => ({ valid: false, error: e.message }))
-    if (r.valid) { setDiscount(r); setCodeMsg(`${r.code} applied`) } else { setDiscount(null); setCodeMsg(r.error) }
-  }
-
-  const onFiles = async (e) => {
-    const picked = [...e.target.files].map(file => ({ file, id: `${Date.now()}-${Math.random()}` }))
-    e.target.value = ''
-    setFiles(prev => [...prev, ...picked.map(p => ({ id: p.id, name: p.file.name, url: null }))])
-    setUploading(true)
-    for (const { file, id } of picked) {
-      try {
-        const url = await uploadFile(file, 'order-files')
-        setFiles(prev => prev.map(x => x.id === id ? { ...x, url } : x))
-      } catch (err) {
-        setError(err.message)
-        setFiles(prev => prev.filter(x => x.id !== id))
-      }
-    }
-    setUploading(false)
+    if (r.valid) { setDiscount(r); setCodeMsg(r.minOrder ? `${r.code} — on orders of ${fmt(r.minOrder)}+` : `${r.code} applied`) } else { setDiscount(null); setCodeMsg(r.error) }
   }
 
   const checkout = async (e) => {
@@ -431,11 +412,11 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
       const { url } = await api('create-shop-order', {
         body: {
           items: lines.map(l => ({ productId: l.productId, selections: l.selections, quantity: l.quantity, format: l.format })),
-          discountCode: discount?.code || null,
-          customerName: f.name, customerEmail: f.email, customerPhone: f.phone, notes: f.notes,
+          // Below a code's minimum the cart already shows full price, so the code isn't sent.
+          discountCode: discount && !t.codeShort ? discount.code : null,
+          customerName: f.name, customerEmail: f.email, customerPhone: f.phone,
           fulfillment: hasPhysical ? f.fulfillment : 'digital',
           shippingAddress: { street: f.street, street2: f.street2, city: f.city, state: f.state, zip: f.zip },
-          designFiles: files.filter(x => x.url).map(x => x.url),
           returnTo,
         },
       })
@@ -448,7 +429,8 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
     <div style={{ background: 'var(--card2)', borderRadius: 14, padding: 14, marginTop: 12, fontSize: 14 }}>
       <Line k="Subtotal" v={fmt(subtotal)} />
       {stackTier && <Line k={`Stack & Save (${stackTier.pct}% off)`} v={`−${fmt(stackDiscount)}`} green />}
-      {discount && <Line k={`Code ${discount.code}`} v={`−${fmt(codeDiscount)}`} green />}
+      {discount && !t.codeShort && <Line k={`Code ${discount.code}`} v={`−${fmt(codeDiscount)}`} green />}
+      {discount && t.codeShort > 0 && <div style={{ ...ui.hint, padding: '3px 0', color: 'var(--warning)', fontWeight: 600 }}>Add {fmt(t.codeShort)} more to use {discount.code} ({fmt(t.codeMin)} minimum)</div>}
       {shipping > 0 && <Line k="Shipping" v={fmt(shipping)} />}
       {t.freeShipping && <Line k="Shipping" v="Free 🎉" green />}
       {toFreeShipping > 0 && <div style={{ ...ui.hint, padding: '3px 0' }}>Add {fmt(toFreeShipping)} more for free shipping</div>}
@@ -526,18 +508,16 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
               </div>
             </>
           )}
-          <Field label="Notes (optional)"><TextArea rows={2} value={f.notes} onChange={set('notes')} /></Field>
           {hasPhysical && (
-          <label style={{ ...ui.hint, cursor: 'pointer', color: 'var(--secondary)', fontWeight: 600 }}>
-            <input type="file" multiple accept="image/*,.pdf,.svg,.ai,.eps,.psd,.zip" onChange={onFiles} style={{ display: 'none' }} />
-            {uploading ? 'Uploading…' : '+ Attach a design file (optional)'}
-          </label>
+            <div style={styles.asShown}>
+              Shop items are made exactly as shown — we can’t add names, colors or other changes to shop orders.
+              Want something personalized? <Link to="/custom">Request a custom order →</Link>
+            </div>
           )}
-          {files.length > 0 && <div style={ui.hint}>{files.map(x => `${x.name}${x.url ? ' ✓' : '…'}`).join(' · ')}</div>}
           {totals}
           {error && <div style={ui.error}>{error}</div>}
           {total > 0 && total < 0.5 && <div style={ui.error}>Card payments must be at least $0.50 — add another item or use a different code.</div>}
-          <Button type="submit" block loading={busy} disabled={uploading || (total > 0 && total < 0.5)}>
+          <Button type="submit" block loading={busy} disabled={total > 0 && total < 0.5}>
             {total === 0 ? 'Place free order →' : `Pay ${fmt(total)} securely →`}
           </Button>
           <Button type="button" variant="ghost" block onClick={() => setStep('cart')}>← Back to cart</Button>
@@ -582,6 +562,7 @@ const styles = {
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   formatBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '12px 8px', borderRadius: 14, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', font: 'inherit', color: 'var(--dark)' },
   formatOn: { borderColor: 'var(--primary)', background: 'var(--card2)', boxShadow: '0 0 0 2px var(--primary) inset' },
+  asShown: { background: 'var(--card2)', borderRadius: 12, padding: '12px 14px', fontSize: 13, lineHeight: 1.5, color: 'var(--mid)' },
   digitalNote: { background: 'var(--card2)', borderRadius: 12, padding: '12px 14px', fontSize: 14, marginTop: 12 },
   qtyBtn: { width: 28, height: 28, borderRadius: '50%', border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 },
   line: { display: 'flex', justifyContent: 'space-between', padding: '3px 0' },

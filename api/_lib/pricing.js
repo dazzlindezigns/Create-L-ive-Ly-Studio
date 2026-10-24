@@ -1,6 +1,6 @@
 import { db, HttpError } from './core.js'
 import { cartTotals, discountAmount, lineFormat, unitPrice, offersDigital, resolveOptions } from '../../src/lib/cart.js'
-import { round2 } from '../../src/lib/money.js'
+import { round2, fmt } from '../../src/lib/money.js'
 
 export { discountAmount }
 
@@ -78,6 +78,9 @@ export async function priceCart(items, code, opts = {}) {
     shippingFee: opts.shippingFee || 0,
     freeShippingOver: opts.freeShippingOver || 0,
   })
+  if (totals.codeShort) {
+    throw new HttpError(400, `Code ${discount.code} needs a ${fmt(totals.codeMin)} order — add ${fmt(totals.codeShort)} more, or remove the code`)
+  }
   return { lines, discount, ...totals }
 }
 
