@@ -212,7 +212,6 @@ function FindForm({ find, products, flash, onClose, onSaved }) {
       </Field>
       <div style={ui.row}>
         <Field label="Name" style={{ flex: 3 }}><Input value={f.title} onChange={set('title')} placeholder="e.g. My go-to heat press pillow" /></Field>
-        <Field label="Icon" style={{ flex: 1, minWidth: 70 }}><Input value={f.icon || ''} onChange={set('icon')} placeholder="🛍️" /></Field>
       </div>
       <div>
         <div style={ui.label}>Your photo</div>
@@ -223,7 +222,7 @@ function FindForm({ find, products, flash, onClose, onSaved }) {
             {uploading ? 'Uploading…' : f.image_url ? 'Change photo' : '+ Add photo'}
           </label>
         </div>
-        <div style={ui.hint}>Optional. Without a photo, the find shows a designed tag card with its icon.</div>
+        <div style={ui.hint}>Optional. Without a photo, the find shows a printed-label card with its name.</div>
       </div>
       <Field label="Why you love it" hint="One or two lines, in your voice — shown in quotes with your name.">
         <TextArea rows={3} value={f.note} onChange={set('note')} placeholder="I’ve gone through three of these — it’s the reason my sticker edges are so clean." />

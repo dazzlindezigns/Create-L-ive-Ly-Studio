@@ -38,7 +38,6 @@ export default function Finds() {
       <main className="container" style={{ paddingTop: 18, paddingBottom: 10 }}>
         {finds.length === 0 && !FINDS.linktree && (
           <div style={{ ...ui.card, textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: 34 }}>🛍️</div>
             <h2 style={{ ...ui.h2, marginTop: 8 }}>My favorite finds are coming soon</h2>
             <p style={ui.muted}>In the meantime, <Link to="/shop/products">shop my studio →</Link></p>
           </div>
@@ -115,12 +114,12 @@ const AmazonLink = ({ f, style, children }) => (
 const Badges = ({ f }) => (
   <div style={s.badges}>
     {f.badge && <span style={s.badge}>{f.badge}</span>}
-    {f.popular && <span style={{ ...s.badge, background: 'var(--dark)' }}>🔥 Popular</span>}
+    {f.popular && <span style={{ ...s.badge, background: 'var(--dark)' }}>Popular</span>}
   </div>
 )
 
 const PairsWith = ({ f }) => f.pairsWith && (
-  <Link to={`/p/${f.pairsWith.id}`} style={s.pairs}>✨ I use this to make <strong>{f.pairsWith.name}</strong> →</Link>
+  <Link to={`/p/${f.pairsWith.id}`} style={s.pairs}>I use this to make <strong>{f.pairsWith.name}</strong> →</Link>
 )
 
 function Featured({ f }) {
@@ -142,18 +141,18 @@ function Featured({ f }) {
   )
 }
 
-// Finds without a photo get a designed boutique tag: blush gradient, a soft halo behind the
-// item's icon and its shelf name — a deliberate look, not an empty box.
+// Finds without a photo get a printed-label card: her fonts and colors, the shelf name and the
+// item's name — typography only, no stock icons. `mini` (admin thumbnails) shows just the initial.
 export function TagArt({ f, big, mini, style }) {
   const shelf = FINDS.shelves.find(x => x.key === f.shelf)?.name
+  if (mini) return <div style={{ ...s.tag, ...style }} aria-hidden="true"><span style={s.tagInitial}>{(f.title || '·').trim()[0]}</span></div>
   return (
     <div style={{ ...s.tag, ...style }} aria-hidden="true">
-      <div style={s.tagDots} />
-      <div style={{ ...s.tagHalo, width: mini ? '78%' : big ? '46%' : '58%' }}>
-        <span style={{ fontSize: mini ? 22 : big ? 'clamp(64px, 12vw, 104px)' : 'clamp(40px, 11vw, 58px)', lineHeight: 1 }}>{f.icon || '🛍️'}</span>
-      </div>
-      {shelf && !mini && <div style={{ ...s.tagLabel, fontSize: big ? 12 : 9.5 }}>{shelf}</div>}
-      {!mini && <div style={s.tagHole} />}
+      <div style={{ ...s.tagFrame, inset: big ? 18 : 10 }} />
+      {shelf && <div style={{ ...s.tagShelf, fontSize: big ? 11 : 9 }}>{shelf}</div>}
+      <div style={{ ...s.tagName, fontSize: big ? 'clamp(24px, 4vw, 34px)' : 'clamp(15px, 4vw, 19px)', WebkitLineClamp: big ? 4 : 3 }}>{f.title}</div>
+      <div style={{ ...s.tagRule, width: big ? 48 : 28 }} />
+      <div style={{ ...s.tagSig, fontSize: big ? 13 : 10.5 }}>{FINDS.eyebrow}</div>
     </div>
   )
 }
@@ -190,12 +189,13 @@ const s = {
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))', gap: 14 },
   card: { ...ui.card, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
   img: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', background: 'var(--card2)' },
-  tag: { position: 'relative', width: '100%', aspectRatio: '1', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
-    background: 'radial-gradient(120% 90% at 30% 15%, #fff 0%, var(--card2) 45%, var(--accent) 140%)' },
-  tagDots: { position: 'absolute', inset: 0, opacity: 0.35, backgroundImage: 'radial-gradient(var(--accent) 1px, transparent 1.2px)', backgroundSize: '14px 14px' },
-  tagHalo: { position: 'relative', aspectRatio: '1', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.85)', boxShadow: '0 10px 30px color-mix(in srgb, var(--primary) 25%, transparent), inset 0 0 0 2px rgba(255,255,255,0.9)' },
-  tagLabel: { position: 'relative', textDecoration: 'none', textAlign: 'center', maxWidth: '88%', lineHeight: 1.3, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--secondary)', background: 'rgba(255,255,255,0.8)', borderRadius: 50, padding: '4px 10px' },
-  tagHole: { position: 'absolute', top: 10, right: 10, width: 12, height: 12, borderRadius: '50%', background: 'var(--bg)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.15)' },
+  tag: { position: 'relative', width: '100%', aspectRatio: '1', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 14%', background: 'var(--card2)' },
+  tagFrame: { position: 'absolute', border: '1px solid color-mix(in srgb, var(--secondary) 35%, transparent)', borderRadius: 6, pointerEvents: 'none' },
+  tagShelf: { fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--secondary)', marginBottom: 10 },
+  tagName: { fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 600, lineHeight: 1.2, color: 'var(--dark)', overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical' },
+  tagRule: { height: 1, background: 'var(--secondary)', opacity: 0.5, margin: '12px auto 8px' },
+  tagSig: { fontFamily: "'Playfair Display', Georgia, serif", fontStyle: 'italic', color: 'var(--mid)' },
+  tagInitial: { fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 600, fontSize: 22, color: 'var(--secondary)' },
   noImg: { display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34 },
   badges: { position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
   badge: { background: 'var(--primary)', color: '#fff', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', borderRadius: 6, padding: '4px 8px', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' },
