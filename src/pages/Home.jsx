@@ -152,6 +152,16 @@ export default function Home() {
       </section>
 
       {/* Create(L)ive(Ly) Finds teaser — featured picks first; hidden until she adds some */}
+      {finds.length === 0 && FINDS.linktree && (
+        <section id="finds" className="container" style={{ paddingTop: 48, scrollMarginTop: 80 }}>
+          <Link to="/finds" style={{ ...s.feature, display: 'block', textAlign: 'center', textDecoration: 'none', color: 'inherit' }}>
+            <div style={s.tileKicker}>{FINDS.eyebrow}</div>
+            <h2 style={{ ...s.h2, marginTop: 8 }}>{FINDS.title}</h2>
+            <p style={{ ...s.featureText, marginTop: 6 }}>The supplies behind my stickers, notepads, journals and 3D prints — all in one place.</p>
+            <span style={{ ...s.btnPink, marginTop: 8 }}>See my finds →</span>
+          </Link>
+        </section>
+      )}
       {finds.length > 0 && (
         <section id="finds" className="container" style={{ paddingTop: 48, scrollMarginTop: 80 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>

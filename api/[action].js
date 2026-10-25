@@ -23,6 +23,7 @@ const routes = {
   'track-ref':           () => import('./_handlers/track-ref.js'),
   'get-finds':           () => import('./_handlers/get-finds.js'),
   'track-find':          () => import('./_handlers/track-find.js'),
+  'linktree-embed':      () => import('./_handlers/linktree-embed.js'),
   'get-partner':         () => import('./_handlers/get-partner.js'),
   'get-review':          () => import('./_handlers/get-review.js'),
   'submit-review':       () => import('./_handlers/submit-review.js'),
