@@ -81,7 +81,8 @@ async function fromLinktree(raw) {
   const user = raw.replace(/^https?:\/\/(www\.)?linktr\.ee\//i, '').replace(/[/?#].*$/, '').trim()
   if (!/^[\w.-]{1,60}$/.test(user)) throw new HttpError(400, 'Enter a Linktree username, like create.live.ly')
   const resp = await fetch(`https://linktr.ee/${encodeURIComponent(user)}`, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StudioApp/1.0)' } })
-  if (!resp.ok) throw new HttpError(502, `Couldn’t open linktr.ee/${user} (${resp.status})`)
+  if (resp.status === 404) throw new HttpError(400, `There’s no Linktree at linktr.ee/${user} — check the spelling`)
+  if (!resp.ok) throw new HttpError(502, `Linktree wouldn’t open right now (${resp.status}) — paste the links below instead`)
   const html = await resp.text()
   const out = []
   const json = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1]
