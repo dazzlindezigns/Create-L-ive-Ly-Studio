@@ -81,6 +81,8 @@ function LinktreeShop({ first }) {
   const [embed, setEmbed] = useState(null)
   useEffect(() => { api('linktree-embed').then(setEmbed).catch(() => setEmbed({ url: `https://linktr.ee/${FINDS.linktree}`, embeddable: false })) }, [])
   if (!embed?.url) return null
+  // /finds?frame=1 forces the iframe so she can see Linktree's answer for herself; visitors never get this.
+  const forced = new URLSearchParams(window.location.search).get('frame') === '1'
   return (
     <section style={{ marginTop: first ? 0 : 30 }}>
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
@@ -88,7 +90,7 @@ function LinktreeShop({ first }) {
         <h2 style={{ ...ui.h2, fontSize: 26, marginTop: 6, marginBottom: 4 }}>Shop my full list</h2>
         <p style={{ ...ui.muted, fontSize: 14 }}>Journal & planner supplies, notepad and sticker making, my 3D favorites and more — tap any item to see it on Amazon.</p>
       </div>
-      {embed.embeddable ? (
+      {embed.embeddable || forced ? (
         <div style={s.frameWrap}>
           <iframe src={embed.url} title={`${BRAND.ownerFirstName}’s Amazon finds`} loading="lazy" style={s.frame} referrerPolicy="strict-origin-when-cross-origin" />
           <a href={embed.url} target="_blank" rel="noopener noreferrer" style={s.frameOpen}>Open full screen ↗</a>
