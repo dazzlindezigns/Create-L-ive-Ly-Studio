@@ -6,15 +6,18 @@ import { FINDS } from '../../src/brand.js'
 export default async function handler(req, res) {
   requireMethod(req, 'GET')
   const user = String(FINDS.linktree || '').trim()
-  if (!user) return res.status(200).json({ url: null, embeddable: false })
+  if (!user) return res.status(200).json({ url: null, embeddable: false, blockedBy: 'no username' })
   const url = `https://linktr.ee/${encodeURIComponent(user)}`
   let embeddable = false
+  let blockedBy = null
   try {
     const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StudioApp/1.0)' } })
     const xfo = (r.headers.get('x-frame-options') || '').toLowerCase()
     const ancestors = (r.headers.get('content-security-policy') || '').toLowerCase().match(/frame-ancestors([^;]*)/)?.[1].trim()
-    embeddable = r.ok && !xfo && (!ancestors || ancestors.split(/\s+/).includes('*'))
-  } catch { embeddable = false }
+    blockedBy = !r.ok ? `status ${r.status}` : xfo ? `x-frame-options: ${xfo}`
+      : ancestors && !ancestors.split(/\s+/).includes('*') ? `frame-ancestors ${ancestors}` : null
+    embeddable = !blockedBy
+  } catch (e) { blockedBy = `fetch failed: ${e.message}` }
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400')
-  return res.status(200).json({ url, embeddable })
+  return res.status(200).json({ url, embeddable, blockedBy })
 }

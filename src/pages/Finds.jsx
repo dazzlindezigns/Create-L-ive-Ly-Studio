@@ -95,12 +95,9 @@ function LinktreeShop({ first }) {
           <a href={embed.url} target="_blank" rel="noopener noreferrer" style={s.frameOpen}>Open full screen ↗</a>
         </div>
       ) : (
-        <a href={embed.url} target="_blank" rel="noopener noreferrer" style={s.listCard}>
-          <div style={s.listIcons} aria-hidden="true">{['📓', '✂️', '🖨️', '🎀', '✨'].map(i => <span key={i} style={s.listIcon}>{i}</span>)}</div>
-          <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 22, fontWeight: 600 }}>See all my Amazon finds</div>
-          <div style={{ ...ui.muted, fontSize: 14, marginTop: 4 }}>Photos, prices and my categories, all in one list</div>
-          <span style={{ ...s.buy, display: 'inline-flex', marginTop: 16, padding: '13px 24px', fontSize: 14 }}>Open my list ↗</span>
-        </a>
+        <p style={{ textAlign: 'center', margin: 0 }}>
+          <a href={embed.url} target="_blank" rel="noopener noreferrer" style={s.listLink}>Open my full list on Linktree →</a>
+        </p>
       )}
     </section>
   )
@@ -208,10 +205,7 @@ const s = {
   frameWrap: { ...ui.card, padding: 0, overflow: 'hidden', position: 'relative', maxWidth: 520, margin: '0 auto' },
   frame: { display: 'block', width: '100%', height: 'min(85vh, 900px)', border: 'none', background: 'var(--card)' },
   frameOpen: { display: 'block', textAlign: 'center', padding: 12, fontSize: 13, fontWeight: 700, color: 'var(--secondary)', textDecoration: 'none', borderTop: '1px solid var(--border)' },
-  listCard: { ...ui.card, display: 'block', textAlign: 'center', textDecoration: 'none', color: 'var(--dark)', maxWidth: 520, margin: '0 auto', padding: '28px 20px',
-    background: 'radial-gradient(120% 90% at 30% 10%, #fff 0%, var(--card2) 55%, var(--accent) 160%)' },
-  listIcons: { display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 14 },
-  listIcon: { width: 46, height: 46, borderRadius: '50%', background: 'rgba(255,255,255,0.9)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, boxShadow: '0 6px 16px color-mix(in srgb, var(--primary) 20%, transparent)' },
+  listLink: { display: 'inline-block', padding: '12px 22px', borderRadius: 50, border: '1.5px solid var(--dark)', color: 'var(--dark)', fontWeight: 700, fontSize: 14, textDecoration: 'none' },
   studio: { ...ui.card, textAlign: 'center', marginTop: 28, background: 'var(--card2)' },
   studioBtn: { display: 'inline-block', marginTop: 14, padding: '12px 22px', borderRadius: 50, background: 'var(--dark)', color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none' },
   disclosure: { fontSize: 12, color: 'var(--muted)', textAlign: 'center', margin: '22px auto 0', maxWidth: 560, lineHeight: 1.6 },
