@@ -96,8 +96,8 @@ const PairsWith = ({ f }) => f.pairsWith && (
 function Featured({ f }) {
   return (
     <section style={s.featured} className="split">
-      <AmazonLink f={f} style={{ display: 'block', position: 'relative' }}>
-        {f.image ? <img src={f.image} alt={f.title} style={s.featuredImg} /> : <div style={{ ...s.featuredImg, ...s.noImg }}>🛍️</div>}
+      <AmazonLink f={f} style={{ display: 'block', position: 'relative', textDecoration: 'none' }}>
+        {f.image ? <img src={f.image} alt={f.title} style={s.featuredImg} /> : <TagArt f={f} big style={{ borderRadius: 16 }} />}
         <Badges f={f} />
       </AmazonLink>
       <div style={{ padding: 'clamp(4px, 2vw, 18px)' }}>
@@ -112,11 +112,27 @@ function Featured({ f }) {
   )
 }
 
+// Finds without a photo get a designed boutique tag: blush gradient, a soft halo behind the
+// item's icon and its shelf name — a deliberate look, not an empty box.
+export function TagArt({ f, big, mini, style }) {
+  const shelf = FINDS.shelves.find(x => x.key === f.shelf)?.name
+  return (
+    <div style={{ ...s.tag, ...style }} aria-hidden="true">
+      <div style={s.tagDots} />
+      <div style={{ ...s.tagHalo, width: mini ? '78%' : big ? '46%' : '58%' }}>
+        <span style={{ fontSize: mini ? 22 : big ? 'clamp(64px, 12vw, 104px)' : 'clamp(40px, 11vw, 58px)', lineHeight: 1 }}>{f.icon || '🛍️'}</span>
+      </div>
+      {shelf && !mini && <div style={{ ...s.tagLabel, fontSize: big ? 12 : 9.5 }}>{shelf}</div>}
+      {!mini && <div style={s.tagHole} />}
+    </div>
+  )
+}
+
 export function FindCard({ f }) {
   return (
     <article style={s.card}>
-      <AmazonLink f={f} style={{ display: 'block', position: 'relative' }}>
-        {f.image ? <img src={f.image} alt={f.title} loading="lazy" style={s.img} /> : <div style={{ ...s.img, ...s.noImg }}>🛍️</div>}
+      <AmazonLink f={f} style={{ display: 'block', position: 'relative', textDecoration: 'none' }}>
+        {f.image ? <img src={f.image} alt={f.title} loading="lazy" style={s.img} /> : <TagArt f={f} />}
         <Badges f={f} />
       </AmazonLink>
       <div style={{ padding: '12px 12px 14px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
@@ -144,6 +160,12 @@ const s = {
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))', gap: 14 },
   card: { ...ui.card, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
   img: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', background: 'var(--card2)' },
+  tag: { position: 'relative', width: '100%', aspectRatio: '1', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
+    background: 'radial-gradient(120% 90% at 30% 15%, #fff 0%, var(--card2) 45%, var(--accent) 140%)' },
+  tagDots: { position: 'absolute', inset: 0, opacity: 0.35, backgroundImage: 'radial-gradient(var(--accent) 1px, transparent 1.2px)', backgroundSize: '14px 14px' },
+  tagHalo: { position: 'relative', aspectRatio: '1', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.85)', boxShadow: '0 10px 30px color-mix(in srgb, var(--primary) 25%, transparent), inset 0 0 0 2px rgba(255,255,255,0.9)' },
+  tagLabel: { position: 'relative', textDecoration: 'none', textAlign: 'center', maxWidth: '88%', lineHeight: 1.3, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--secondary)', background: 'rgba(255,255,255,0.8)', borderRadius: 50, padding: '4px 10px' },
+  tagHole: { position: 'absolute', top: 10, right: 10, width: 12, height: 12, borderRadius: '50%', background: 'var(--bg)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.15)' },
   noImg: { display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34 },
   badges: { position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
   badge: { background: 'var(--primary)', color: '#fff', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', borderRadius: 6, padding: '4px 8px', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' },

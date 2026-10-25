@@ -134,6 +134,7 @@ export const FINDS = {
   ],
   badges: ['My #1 pick', 'I use this daily', 'Bestie favorite', 'Restocked again', 'Game changer'],
   disclosure: 'As an Amazon Associate I earn from qualifying purchases. Prices and availability are on Amazon.',
+  linktree: 'create.live.ly', // her Linktree of Amazon links — "Import from my Linktree" reads it
 }
 
 // Suggested "shop is closed" message (Products → Shop settings → "Use the template message").

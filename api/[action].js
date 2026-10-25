@@ -45,6 +45,7 @@ const routes = {
   'draft-email':         () => import('./_handlers/draft-email.js'),
   'refund-order':        () => import('./_handlers/refund-order.js'),
   'reload-reply':        () => import('./_handlers/reload-reply.js'),
+  'import-finds':        () => import('./_handlers/import-finds.js'),
   'resend-partner-welcome': () => import('./_handlers/resend-partner-welcome.js'),
   // Cron (vercel.json) — checks CRON_SECRET itself
   'review-reminders':    () => import('./_handlers/review-reminders.js'),

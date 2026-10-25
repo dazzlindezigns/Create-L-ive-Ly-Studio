@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=600')
   return res.status(200).json(data.filter(f => cleanAmazonUrl(f.url)).map(f => ({
     id: f.id, title: f.title, note: f.note, url: cleanAmazonUrl(f.url), image: f.image_url,
-    shelf: f.shelf, badge: f.badge, featured: f.featured, popular: popular.has(f.id),
+    shelf: f.shelf, badge: f.badge, icon: f.icon || null, featured: f.featured, popular: popular.has(f.id),
     pairsWith: f.pairs_with && pName[f.pairs_with] ? { id: f.pairs_with, name: pName[f.pairs_with] } : null,
   })))
 }
