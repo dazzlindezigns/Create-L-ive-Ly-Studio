@@ -19,6 +19,7 @@ import Partners from './pages/Partners'
 import PartnerPage from './pages/PartnerPage'
 import ReviewPage from './pages/ReviewPage'
 import { PrivacyPage, TermsPage } from './pages/Legal'
+import Finds from './pages/Finds'
 
 const admin = (el) => <RequireAdmin>{el}</RequireAdmin>
 
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/downloads/:orderId" element={<Downloads />} />
         <Route path="/partner/:token" element={<PartnerPage />} />
         <Route path="/review/:orderId" element={<ReviewPage />} />
+        <Route path="/finds" element={<Finds />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
 

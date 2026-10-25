@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { BRAND, COLLECTIONS, PARTNERS, SITE, STICKER_BAR } from '../brand'
+import { BRAND, COLLECTIONS, PARTNERS, SITE, STICKER_BAR, FINDS } from '../brand'
+import { FindCard } from './Finds'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 import { api } from '../lib/api'
 import { fmt } from '../lib/money'
@@ -13,6 +14,7 @@ export default function Home() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [sheets, setSheets] = useState([])
+  const [finds, setFinds] = useState([])
   const [tiers, setTiers] = useState(() => tiersFromSettings())
 
   // Live Sticker Bar sheets + her current Stack & Save tiers (falls back to the mockups below).
@@ -23,6 +25,7 @@ export default function Home() {
       setSheets(live.slice(0, live.length >= 6 ? 6 : live.length >= 3 ? 3 : 0))
     }).catch(() => {})
     api('get-settings').then(s => setTiers(tiersFromSettings(s))).catch(() => {})
+    api('get-finds').then(setFinds).catch(() => {})
   }, [])
 
   // Old links: /?type=… (the form used to live here) and /?type=sticker-bar (now the sticker sheet shop).
@@ -147,6 +150,24 @@ export default function Home() {
           </ol>
         </div>
       </section>
+
+      {/* Create(L)ive(Ly) Finds teaser — featured picks first; hidden until she adds some */}
+      {finds.length > 0 && (
+        <section id="finds" className="container" style={{ paddingTop: 48, scrollMarginTop: 80 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div>
+              <div style={s.tileKicker}>{FINDS.eyebrow}</div>
+              <h2 style={{ ...s.h2, marginTop: 8 }}>{FINDS.title}</h2>
+              <p style={{ ...s.featureText, marginTop: 6 }}>The tools and treasures I actually use and love.</p>
+            </div>
+            <Link to="/finds" style={s.btnPink}>See all finds →</Link>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))', gap: 14 }}>
+            {[...finds].sort((a, b) => (b.featured - a.featured)).slice(0, 4).map(f => <FindCard key={f.id} f={f} />)}
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', marginTop: 12 }}>{FINDS.disclosure}</p>
+        </section>
+      )}
 
       {/* Recommended communities (affiliate) */}
       {PARTNERS.map(p => (

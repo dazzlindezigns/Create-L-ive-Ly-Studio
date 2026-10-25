@@ -119,6 +119,23 @@ export const PARTNERS = [
   },
 ]
 
+// Create(L)ive(Ly) Finds (/finds): her Amazon favorites, styled as her own boutique of recommendations.
+// The disclosure wording is what Amazon Associates requires — keep it on the page.
+export const FINDS = {
+  title: `${BRAND.shortName} Finds`,
+  eyebrow: `Curated by ${BRAND.ownerFirstName}`,
+  intro: 'The tools on my craft table, the vendor-booth secrets and the little luxuries I can’t stop recommending. If it’s here, I use it and I love it.',
+  shelves: [
+    { key: 'craft-table', name: 'On my craft table' },
+    { key: 'vendor', name: 'Vendor booth must-haves' },
+    { key: 'journal', name: 'Journal & planner faves' },
+    { key: 'home', name: 'Studio & home' },
+    { key: 'gifts', name: 'Gifts they’ll love' },
+  ],
+  badges: ['My #1 pick', 'I use this daily', 'Bestie favorite', 'Restocked again', 'Game changer'],
+  disclosure: 'As an Amazon Associate I earn from qualifying purchases. Prices and availability are on Amazon.',
+}
+
 // Suggested "shop is closed" message (Products → Shop settings → "Use the template message").
 export const SHOP_CLOSED_TEMPLATE = "We're taking a short creative break to restock and catch up on custom orders. 💕 The shop will reopen soon — custom requests are still open, so tap “Request a custom item” to start yours. Thank you for your patience and support!"
 

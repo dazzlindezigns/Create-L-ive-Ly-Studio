@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
-import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE, PARTNER_PROGRAM } from '../brand'
+import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE, PARTNER_PROGRAM, FINDS } from '../brand'
 import { normalizeTiers, tiersFromSettings, optionGroups } from '../lib/cart'
 import { cleanSets, groupFromSet, applySet } from '../lib/optionSets'
+import FindsManager from '../components/FindsManager'
 import Nav from '../components/Nav'
 import { ui, Button, Field, Input, TextArea, Select, Loading, Modal, useFlash } from '../components/ui'
 
@@ -116,6 +117,7 @@ export default function AdminProducts() {
           <button onClick={() => setPanel('codes')} style={styles.pill}>🏷 Discount codes{codes?.filter(c => c.active).length ? ` · ${codes.filter(c => c.active).length}` : ''}</button>
           <button onClick={() => setPanel('stack')} style={styles.pill}>📚 Stack & Save</button>
           <button onClick={() => setPanel('sets')} style={styles.pill}>🎨 Option sets{optionSets.length ? ` · ${optionSets.length}` : ''}</button>
+          <button onClick={() => setPanel('finds')} style={styles.pill}>🛍️ {FINDS.title}</button>
           <button onClick={() => navigate('/dashboard/partners')} style={styles.pill}>{PARTNER_PROGRAM.icon} {PARTNER_PROGRAM.short}</button>
           <button onClick={() => navigate('/dashboard/inbox#reviews')} style={styles.pill}>⭐ Reviews</button>
           <button onClick={() => navigator.clipboard.writeText(`${APP_URL}/shop/products`).then(() => flash('Shop link copied'))} style={styles.pill}>🔗 Copy shop link</button>
@@ -182,6 +184,11 @@ export default function AdminProducts() {
       {panel === 'codes' && (
         <Modal title="Discount codes" onClose={() => setPanel(null)}>
           <DiscountCodes codes={codes} reload={load} flash={flash} />
+        </Modal>
+      )}
+      {panel === 'finds' && (
+        <Modal title={FINDS.title} onClose={() => setPanel(null)}>
+          <FindsManager products={products} flash={flash} />
         </Modal>
       )}
       {panel === 'sets' && (

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { BRAND, COLLECTIONS, BUILT_BY } from '../brand'
+import { BRAND, COLLECTIONS, BUILT_BY, FINDS } from '../brand'
 
 const LINKS = [
   { to: '/shop/products', label: 'Shop' },
   { to: '/#sticker-bar', label: 'Sticker Bar' },
+  { to: '/finds', label: 'Finds' },
   { to: '/#about', label: 'About' },
 ]
 
@@ -48,6 +49,7 @@ export function SiteFooter() {
         <div>
           <div style={styles.footHead}>Shop</div>
           <Link to="/shop/products" style={styles.footLink}>All products</Link>
+          <Link to="/finds" style={styles.footLink}>{FINDS.title}</Link>
           {COLLECTIONS.map(c => <Link key={c.key} to={`/shop/products?c=${c.key}`} style={styles.footLink}>{c.name}</Link>)}
         </div>
         <div>
