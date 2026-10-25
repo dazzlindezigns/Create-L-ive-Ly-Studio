@@ -109,13 +109,13 @@ export const PARTNERS = [
   {
     key: 'black-girls-journal-club',
     name: 'Black Girls Journal Club',
-    kicker: 'Lifetime Membership',
+    kicker: 'Online Community',
     image: '/img/partners/black-girls-journal-club.webp',
     imageAlt: 'Black Girls Journal Club is a space where Black women come to reflect, grow, and write their stories with ease.',
     description: 'A creative community for Black women who love journaling, crafting, digital design and learning how to turn their creativity into something more.',
-    cta: 'Join the Lifetime Membership',
-    url: 'https://shop.beacons.ai/blackgirlsjournalclub/d1abc344-6082-47e0-9862-7b7876803408?affiliateLinkId=f596d159-8e4a-4e96-b16a-9090a977451f',
-    disclosure: 'Affiliate link: I may earn a commission if you purchase through this link, at no additional cost to you.',
+    cta: 'Join the Community',
+    url: 'https://www.skool.com/blackgirlsjournalclub/about?ref=918885b1fd484a8696e60d3686cfd3bb',
+    disclosure: 'Affiliate link: I may earn a commission if you join through this link, at no additional cost to you.',
   },
 ]
 
