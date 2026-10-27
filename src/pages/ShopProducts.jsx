@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { BRAND, COLLECTIONS, STICKER_BAR, REFUND_POLICY, PARTNER_PROGRAM } from '../brand'
-import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions } from '../lib/cart'
+import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions, licenseFromSettings, asksUse } from '../lib/cart'
 import { ui, Button, Field, Input, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 import Stars from '../components/Stars'
@@ -18,7 +18,7 @@ const loadCart = () => { try { return JSON.parse(localStorage.getItem(CART_KEY))
 export function useShop() {
   const [products, setProducts] = useState(null)
   const [settings, setSettings] = useState({})
-  const [cart, setCart] = useState(loadCart) // [{ key, productId, selections, quantity, format }]
+  const [cart, setCart] = useState(loadCart) // [{ key, productId, selections, quantity, format, use }]
   useEffect(() => {
     // If products can't load, customers still get the designed shop with "coming soon" collections.
     Promise.all([
@@ -31,6 +31,7 @@ export function useShop() {
 
   const shopOpen = settings.shop_open !== false && settings.shop_open !== 'false'
   const byId = useMemo(() => Object.fromEntries((products || []).map(p => [p.id, p])), [products])
+  const license = licenseFromSettings(settings)
   const lines = cart.filter(c => byId[c.productId]).map(c => {
     const product = byId[c.productId]
     const format = lineFormat(product, c.format)
@@ -38,31 +39,35 @@ export function useShop() {
     // Mirrors priceCart(): physical lines add the price changes of the chosen options.
     const opts = format === 'digital' ? null : resolveOptions(product, c.selections)
     const unit = round2(unitPrice(product, format) + (opts?.extra || 0))
-    return { ...c, format, quantity, product, unit, optionText: opts?.text, total: round2(unit * quantity) }
+    // Older carts (or a product that just started asking) have no answer yet — the cart asks for it.
+    const use = asksUse(product, license) ? (c.use === 'personal' || c.use === 'business' ? c.use : null) : null
+    return { ...c, format, quantity, product, unit, optionText: opts?.text, total: round2(unit * quantity), asksUse: asksUse(product, license), use }
   })
   const stackTiers = tiersFromSettings(settings)
   const stackCount = lines.filter(l => l.product.bulk_pricing_enabled !== false).reduce((s, l) => s + l.quantity, 0)
   const count = lines.reduce((s, l) => s + l.quantity, 0)
 
   // Returns true when the product has options (the product view stays open for another combination).
-  const addToCart = (product, selections, quantity, format) => {
+  const addToCart = (product, selections, quantity, format, use = null) => {
     const digital = format === 'digital'
     const picks = digital ? null : selections
-    const key = `${product.id}|${picks ? JSON.stringify(picks) : ''}|${format}`
+    // A digital file is one copy per order, so its use isn't part of the key (adding again updates it).
+    const key = `${product.id}|${picks ? JSON.stringify(picks) : ''}|${format}${use && !digital ? `|${use}` : ''}`
     // Digital items are one copy per order — adding again doesn't stack.
     setCart(prev => prev.some(c => c.key === key)
-      ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity } : c)
-      : [...prev, { key, productId: product.id, selections: picks, quantity: digital ? 1 : quantity, format }])
+      ? prev.map(c => c.key === key ? { ...c, quantity: digital ? 1 : c.quantity + quantity, ...(use ? { use } : {}) } : c)
+      : [...prev, { key, productId: product.id, selections: picks, quantity: digital ? 1 : quantity, format, ...(use ? { use } : {}) }])
     return Boolean(picks)
   }
+  const setUse = (key, use) => setCart(prev => prev.map(c => c.key === key ? { ...c, use } : c))
   const setQty = (key, q) => setCart(prev => q <= 0 ? prev.filter(c => c.key !== key) : prev.map(c => c.key === key ? { ...c, quantity: q } : c))
   const clearCart = () => setCart([])
-  return { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, clearCart }
+  return { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, setUse, clearCart, license }
 }
 
 export default function ShopProducts() {
   const [params, setParams] = useSearchParams()
-  const { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, clearCart } = useShop()
+  const { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, setUse, clearCart } = useShop()
   const [cartOpen, setCartOpen] = useState(false)
   const selected = params.get('p') ? byId[params.get('p')] : null
   // Filters live in the URL (?c=labs, ?c=digital) so collection links can be shared like her Payhip ones.
@@ -194,7 +199,7 @@ export default function ShopProducts() {
         onClose={() => setParam('p', null)} onAdd={add} disabled={!shopOpen} cartCount={count}
         onViewCart={() => { setParam('p', null); setCartOpen(true) }} />}
       {cartOpen && <CartModal lines={lines} settings={settings} stackTiers={stackTiers} shopOpen={shopOpen} onClose={() => setCartOpen(false)}
-        setQty={setQty} onCheckedOut={clearCart} />}
+        setQty={setQty} setUse={setUse} onCheckedOut={clearCart} />}
     </div>
   )
 }
@@ -262,6 +267,9 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
   const [added, setAdded] = useState(null) // last combination added, e.g. "2 × Color: Blush · Size: Large"
   const [qty, setQty] = useState(1)
   const [imgIdx, setImgIdx] = useState(0)
+  const license = licenseFromSettings(settings)
+  const asks = asksUse(product, license)
+  const [use, setUse] = useState(null) // 'personal' | 'business' — no default: they choose
   const isDigital = format === 'digital'
   const sticker = isSticker(product)
   const opts = isDigital ? null : resolveOptions(product, picks)
@@ -349,6 +357,8 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
       </>
       )}
 
+      {asks && <UsePicker use={use} onPick={setUse} license={license} />}
+
       {product.bulk_pricing_enabled !== false && (
         <div style={styles.bulkTable}>
           {stackTiers.slice().reverse().map(t => {
@@ -369,11 +379,11 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
           <Button small variant="ghost" onClick={onViewCart} style={{ marginTop: 8 }}>View cart ({cartCount}) →</Button>
         </div>
       )}
-      <Button block disabled={disabled || unavailable} style={{ marginTop: 14 }} onClick={() => {
-        onAdd(product, opts?.selections || null, qty, format)
+      <Button block disabled={disabled || unavailable || (asks && !use)} style={{ marginTop: 14 }} onClick={() => {
+        onAdd(product, opts?.selections || null, qty, format, asks ? use : null)
         if (opts?.selections) { setAdded(`${qty} × ${opts.text}`); setQty(1) }
       }}>
-        {disabled ? 'Shop is closed' : unavailable ? 'Sold out' : `Add to cart · ${fmt(price * (isDigital ? 1 : qty))}`}
+        {disabled ? 'Shop is closed' : unavailable ? 'Sold out' : asks && !use ? 'Choose personal or small business use' : `Add to cart · ${fmt(price * (isDigital ? 1 : qty))}`}
       </Button>
       {product.rating && <ProductReviews productId={product.id} />}
     </>
@@ -381,6 +391,25 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
 }
 
 // Verified-buyer reviews for one product (hidden ones never reach the browser).
+// "How will you use it?" — small business adds the license fee once per order (see cartTotals).
+function UsePicker({ use, onPick, license, compact }) {
+  return (
+    <div style={{ marginTop: compact ? 8 : 14 }}>
+      {!compact && <div style={ui.label}>How will you use it?</div>}
+      <div style={styles.formats}>
+        {[['personal', 'Personal use', 'Just for me'], ['business', 'Small business', `+${fmt(license.price)} license, once per order`]].map(([k, label, sub]) => (
+          <button key={k} type="button" onClick={() => onPick(k)} aria-pressed={use === k}
+            style={{ ...styles.formatBtn, padding: compact ? '8px 6px' : '12px 8px', ...(use === k ? styles.formatOn : {}) }}>
+            <span style={{ fontWeight: 700, fontSize: compact ? 13 : 14 }}>{label}</span>
+            <span style={ui.hint}>{sub}</span>
+          </button>
+        ))}
+      </div>
+      {use === 'business' && license.details && !compact && <div style={{ ...ui.hint, marginTop: 6 }}>{license.name}: {license.details}</div>}
+    </div>
+  )
+}
+
 function ProductReviews({ productId }) {
   const [reviews, setReviews] = useState(null)
   useEffect(() => { api(`get-reviews?productId=${productId}`).then(setReviews).catch(() => setReviews([])) }, [productId])
@@ -402,7 +431,7 @@ function ProductReviews({ productId }) {
   )
 }
 
-export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, onCheckedOut, returnTo }) {
+export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQty, setUse, onCheckedOut, returnTo }) {
   const [step, setStep] = useState('cart')
   const [code, setCode] = useState('')
   const [discount, setDiscount] = useState(null)
@@ -421,14 +450,17 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }))
 
   // Display math mirrors api/_lib/pricing.js; the server recalculates before charging.
+  const license = licenseFromSettings(settings)
+  const needsUse = lines.some(l => l.asksUse && !l.use)
   const hasPhysical = lines.some(l => l.format === 'physical')
   const hasDigital = lines.some(l => l.format === 'digital')
   const fee = Number(settings.shop_shipping_fee) || 0
   const freeOver = Number(settings.shop_free_shipping_over) || 0
   const t = cartTotals(
-    lines.map(l => ({ itemTotal: l.total, quantity: l.quantity, bulkEligible: l.product.bulk_pricing_enabled !== false })),
+    lines.map(l => ({ itemTotal: l.total, quantity: l.quantity, bulkEligible: l.product.bulk_pricing_enabled !== false, business: l.use === 'business' })),
     {
       stackTiers,
+      licensePrice: license.price,
       // A partner shopping for themselves gets their discount instead of a code.
       code: me ? { discount_type: 'percent', discount_value: me.pct } : discount && { discount_type: discount.type, discount_value: discount.value, min_order: discount.minOrder },
       shippingFee: hasPhysical && f.fulfillment === 'shipping' ? fee : 0,
@@ -451,7 +483,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
     try {
       const { url } = await api('create-shop-order', {
         body: {
-          items: lines.map(l => ({ productId: l.productId, selections: l.selections, quantity: l.quantity, format: l.format })),
+          items: lines.map(l => ({ productId: l.productId, selections: l.selections, quantity: l.quantity, format: l.format, use: l.use || null })),
           // Below a code's minimum the cart already shows full price, so the code isn't sent.
           discountCode: !me && discount && !t.codeShort ? discount.code : null,
           partnerToken: me?.token || null,
@@ -474,6 +506,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
       {me && <Line k={`${PARTNER_PROGRAM.short} discount (${me.pct}%)`} v={`−${fmt(codeDiscount)}`} green />}
       {!me && discount && !t.codeShort && <Line k={`Code ${discount.code}`} v={`−${fmt(codeDiscount)}`} green />}
       {!me && discount && t.codeShort > 0 && <div style={{ ...ui.hint, padding: '3px 0', color: 'var(--warning)', fontWeight: 600 }}>Add {fmt(t.codeShort)} more to use {discount.code} ({fmt(t.codeMin)} minimum)</div>}
+      {t.licenseFee > 0 && <Line k={`${license.name} (once per order)`} v={fmt(t.licenseFee)} />}
       {shipping > 0 && <Line k="Shipping" v={fmt(shipping)} />}
       {t.freeShipping && <Line k="Shipping" v="Free 🎉" green />}
       {toFreeShipping > 0 && <div style={{ ...ui.hint, padding: '3px 0' }}>Add {fmt(toFreeShipping)} more for free shipping</div>}
@@ -491,6 +524,8 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{l.product.name}</div>
                 <div style={ui.muted}>{l.format === 'digital' ? 'Digital download' : `${isSticker(l.product) && offersDigital(l.product) ? 'Vinyl · ' : ''}${l.optionText ? `${l.optionText} · ` : ''}${fmt(l.unit)} each`}</div>
+                {l.use && <button type="button" onClick={() => setUse(l.key, l.use === 'business' ? 'personal' : 'business')} style={styles.useTag} title="Tap to change">{l.use === 'business' ? 'Small business' : 'Personal'} · change</button>}
+                {l.asksUse && !l.use && <UsePicker use={null} onPick={u => setUse(l.key, u)} license={license} compact />}
               </div>
               {l.format === 'digital' ? (
                 <button onClick={() => setQty(l.key, 0)} style={{ ...styles.qtyBtn, width: 'auto', padding: '0 10px', fontSize: 12, fontWeight: 600 }}>Remove</button>
@@ -521,8 +556,9 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
               )}
               {codeMsg && <div style={{ ...ui.hint, color: discount ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</div>}
               {totals}
-              <Button block disabled={!shopOpen} onClick={() => setStep('checkout')} style={{ marginTop: 14 }}>
-                {shopOpen ? 'Checkout →' : 'Shop is closed'}
+              {t.licenseFee > 0 && license.details && <div style={{ ...ui.hint, marginTop: 10 }}>{license.name}: {license.details} One license covers every item in this order.</div>}
+              <Button block disabled={!shopOpen || needsUse} onClick={() => setStep('checkout')} style={{ marginTop: 14 }}>
+                {!shopOpen ? 'Shop is closed' : needsUse ? 'Choose personal or small business use above' : 'Checkout →'}
               </Button>
             </>
           )}
@@ -616,6 +652,7 @@ const styles = {
   series: { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 2 },
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   formatBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '12px 8px', borderRadius: 14, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', font: 'inherit', color: 'var(--dark)' },
+  useTag: { font: 'inherit', whiteSpace: 'nowrap', display: 'inline-block', marginTop: 4, padding: '2px 9px', borderRadius: 50, border: '1px solid var(--border)', background: 'var(--card2)', fontSize: 11.5, fontWeight: 700, color: 'var(--secondary)', cursor: 'pointer' },
   formatOn: { borderColor: 'var(--primary)', background: 'var(--card2)', boxShadow: '0 0 0 2px var(--primary) inset' },
   partnerBanner: { marginTop: 14, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.5 },
   partnerOff: { display: 'block', background: 'none', border: 'none', padding: '4px 0 0', color: 'var(--secondary)', fontWeight: 700, fontSize: 12, cursor: 'pointer' },

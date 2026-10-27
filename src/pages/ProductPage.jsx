@@ -9,7 +9,7 @@ import { useShop, ProductDetail, CartModal } from './ShopProducts'
 // Customers can add it and check out right here; the rest of the shop is one tap away.
 export default function ProductPage() {
   const { id } = useParams()
-  const { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, clearCart } = useShop()
+  const { products, settings, byId, lines, shopOpen, stackTiers, stackCount, count, addToCart, setQty, setUse, clearCart } = useShop()
   const [cartOpen, setCartOpen] = useState(false)
   const product = byId[id]
 
@@ -59,7 +59,7 @@ export default function ProductPage() {
         </button>
       )}
       {cartOpen && <CartModal lines={lines} settings={settings} stackTiers={stackTiers} shopOpen={shopOpen}
-        onClose={() => setCartOpen(false)} setQty={setQty} onCheckedOut={clearCart} returnTo={`/p/${id}`} />}
+        onClose={() => setCartOpen(false)} setQty={setQty} setUse={setUse} onCheckedOut={clearCart} returnTo={`/p/${id}`} />}
     </div>
   )
 }

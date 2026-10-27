@@ -1,7 +1,7 @@
 // Shop cart math shared by the browser (display) and api/_lib/pricing.js (what is charged).
 // Keep it pure — the server always re-prices from the products table before charging.
 import { round2 } from './money.js'
-import { STACK_TIERS, STICKER_BAR } from '../brand.js'
+import { STACK_TIERS, STICKER_BAR, BUSINESS_LICENSE } from '../brand.js'
 
 const sum = (arr, fn) => arr.reduce((s, x) => s + fn(x), 0)
 
@@ -60,6 +60,19 @@ export function resolveOptions(p, wanted = {}) {
   }
 }
 
+// Small Business License (settings.business_license). A price of 0 turns the question off everywhere.
+export function licenseFromSettings(s = {}) {
+  const v = s.business_license || {}
+  return {
+    name: String(v.name || '').trim().slice(0, 60) || BUSINESS_LICENSE.name,
+    details: String(v.details ?? BUSINESS_LICENSE.details).trim().slice(0, 500),
+    price: Math.max(0, round2(v.price)),
+  }
+}
+// Does this product ask "personal or small business use?" right now?
+export const asksUse = (p, license) => Boolean(p?.ask_use) && license?.price > 0
+export const USE_LABEL = { personal: 'Personal use', business: 'Small business use' }
+
 export const isSticker = (p) => p.collection === STICKER_BAR.collection
 
 // code = discount_codes row shape: { discount_type: 'percent'|'fixed', discount_value, min_order }
@@ -71,9 +84,9 @@ export function discountAmount(code, base) {
     : round2(Math.min(v, base))
 }
 
-// lines: [{ itemTotal, quantity, bulkEligible }]
+// lines: [{ itemTotal, quantity, bulkEligible, business }]
 // Stack & Save: every eligible item in the cart (any product, any format) counts toward one tier.
-export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, freeShippingOver = 0 } = {}) {
+export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, freeShippingOver = 0, licensePrice = 0 } = {}) {
   const subtotal = round2(sum(lines, l => l.itemTotal))
   const stack = lines.filter(l => l.bulkEligible)
   const stackTier = tierFor(stackTiers, sum(stack, l => l.quantity))
@@ -90,6 +103,9 @@ export function cartTotals(lines, { stackTiers, code = null, shippingFee = 0, fr
   const threshold = Number(freeShippingOver) || 0
   const freeShipping = fee > 0 && threshold > 0 && merchandise >= threshold
   const shipping = freeShipping ? 0 : fee
-  const total = Math.max(0, round2(merchandise + shipping))
-  return { subtotal, stackTier, stackDiscount, codeDiscount, codeMin, codeShort, merchandise, freeShipping, shipping, total }
+  // One Small Business License per order, however many items are for business use. It's a flat fee:
+  // not discounted, not counted toward free shipping or partner commission.
+  const licenseFee = lines.some(l => l.business) ? Math.max(0, round2(licensePrice)) : 0
+  const total = Math.max(0, round2(merchandise + licenseFee + shipping))
+  return { subtotal, stackTier, stackDiscount, codeDiscount, codeMin, codeShort, merchandise, licenseFee, freeShipping, shipping, total }
 }

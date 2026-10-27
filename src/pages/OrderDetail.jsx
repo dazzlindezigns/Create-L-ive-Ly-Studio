@@ -246,6 +246,8 @@ function ItemsSection({ order, payments, flash, onRecordPayment, onRefund, sendS
           <span style={{ minWidth: 0 }}>
             <strong>{l.kind === 'digital' ? '' : `${l.quantity} × `}{l.productName}</strong>
             {(l.option || l.kind === 'digital') && <div style={ui.muted}>{l.kind === 'digital' ? '⬇ Digital download' : l.option}</div>}
+            {l.use === 'business' && <div style={{ ...ui.muted, color: 'var(--secondary)', fontWeight: 700 }}>💼 Small business use</div>}
+            {l.use === 'personal' && <div style={ui.muted}>Personal use</div>}
           </span>
           <span>{fmt(l.itemTotal)}</span>
         </div>

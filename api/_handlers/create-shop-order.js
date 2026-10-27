@@ -8,7 +8,7 @@ import { cleanAddress } from '../_lib/validate.js'
 import { fmt, round2 } from '../../src/lib/money.js'
 import { cleanCode } from '../../src/lib/affiliates.js'
 import { PARTNER_PROGRAM } from '../../src/brand.js'
-import { tiersFromSettings } from '../../src/lib/cart.js'
+import { tiersFromSettings, licenseFromSettings, USE_LABEL } from '../../src/lib/cart.js'
 
 export default async function handler(req, res) {
   requireMethod(req, 'POST')
@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   const supabase = db()
 
   const { data: settingsRows } = await supabase.from('settings').select('key, value')
-    .in('key', ['shop_open', 'shop_shipping_fee', 'shop_free_shipping_over', 'stack_save_tiers', 'sticker_bar_tiers'])
+    .in('key', ['shop_open', 'shop_shipping_fee', 'shop_free_shipping_over', 'stack_save_tiers', 'sticker_bar_tiers', 'business_license'])
   const settings = Object.fromEntries((settingsRows || []).map(r => [r.key, r.value]))
   if (settings.shop_open === false || settings.shop_open === 'false') throw new HttpError(400, 'The shop is closed right now')
 
@@ -40,6 +40,7 @@ export default async function handler(req, res) {
     shippingFee: shipping ? Number(settings.shop_shipping_fee) || 0 : 0,
     freeShippingOver: Number(settings.shop_free_shipping_over) || 0,
     stackTiers: tiersFromSettings(settings),
+    license: licenseFromSettings(settings),
   })
   const wantsShipping = b.fulfillment === 'shipping'
   let cart = await price(wantsShipping)
@@ -51,9 +52,12 @@ export default async function handler(req, res) {
   const shippingAddress = fulfillment === 'shipping' ? cleanAddress(b.shippingAddress, customerName) : null
   if (fulfillment === 'shipping' && !shippingAddress) throw new HttpError(400, 'Complete shipping address is required')
 
-  const lines = cart.lines.map(l => `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' [digital download]' : ` × ${l.quantity}`} — ${fmt(l.itemTotal)}`)
+  // "Sticker sheet (Size: 4 inch) — small business use"
+  const itemName = (l) => `${l.productName}${l.option ? ` (${l.option})` : ''}${l.use ? ` — ${USE_LABEL[l.use].toLowerCase()}` : ''}`
+  const lines = cart.lines.map(l => `${itemName(l)}${l.kind === 'digital' ? ' [digital download]' : ` × ${l.quantity}`} — ${fmt(l.itemTotal)}`)
   if (cart.stackTier) lines.push(`Stack & Save ${cart.stackTier.pct}% off (−${fmt(cart.stackDiscount)})`)
   if (cart.discount) lines.push(`${cart.discount.id ? 'Code ' : ''}${cart.discount.code} (−${fmt(cart.codeDiscount)})`)
+  if (cart.licenseFee) lines.push(`${cart.license.name} ${fmt(cart.licenseFee)}`)
   if (cart.shipping) lines.push(`Shipping ${fmt(cart.shipping)}`)
   if (cart.freeShipping) lines.push('Free shipping')
 
@@ -91,7 +95,10 @@ export default async function handler(req, res) {
     shop_discount_code: cart.discount?.code || null,
     shop_discount_amount: cart.codeDiscount || null,
     quote_breakdown: {
-      lines: cart.lines.map(l => ({ description: `${l.productName}${l.option ? ` (${l.option})` : ''}${l.kind === 'digital' ? ' — digital download' : ''}`, qty: l.quantity, unitPrice: l.unitPrice })),
+      lines: [
+        ...cart.lines.map(l => ({ description: `${itemName(l)}${l.kind === 'digital' ? ' — digital download' : ''}`, qty: l.quantity, unitPrice: l.unitPrice })),
+        ...(cart.licenseFee ? [{ description: `${cart.license.name} (one per order)`, qty: 1, unitPrice: cart.licenseFee }] : []),
+      ],
     },
     ...(partner ? { affiliate_id: partner.id, commission: round2(cart.merchandise * (Number(partner.rate) || 0) / 100) } : {}),
     customer_signature: customerName,

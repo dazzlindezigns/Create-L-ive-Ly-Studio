@@ -171,6 +171,14 @@ export const PAYOUT_METHODS = ['Cash App', 'Zelle', 'PayPal', 'Venmo', 'Other']
 
 // Refunds: only ready-made physical shop items can be refunded. Shown at checkout, on product
 // pages, receipts and download emails so it's clear before anyone pays.
+// Small Business License: products with "Ask personal or small business use" make the buyer pick one.
+// Picking small business on ANY item adds this fee once per order. Price/name/details are edited in
+// Shop → Shop settings (settings.business_license); these are the defaults until she saves her own.
+export const BUSINESS_LICENSE = {
+  name: 'Small Business License',
+  details: 'Lets you use these designs in products you sell or in your business.',
+}
+
 export const REFUND_POLICY = {
   digital: 'Digital downloads are final sale — no refunds or exchanges.',
   custom: 'Custom orders are made just for you and are final sale — no refunds.',

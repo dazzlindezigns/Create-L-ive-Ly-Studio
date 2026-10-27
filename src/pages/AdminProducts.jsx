@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE, PARTNER_PROGRAM, FINDS } from '../brand'
-import { normalizeTiers, tiersFromSettings, optionGroups } from '../lib/cart'
+import { normalizeTiers, tiersFromSettings, optionGroups, licenseFromSettings } from '../lib/cart'
 import { cleanSets, groupFromSet, applySet } from '../lib/optionSets'
 import FindsManager from '../components/FindsManager'
 import Nav from '../components/Nav'
@@ -20,7 +20,7 @@ const OPTION_PRESETS = [
   ['Custom', () => ({ name: '', choices: [choice('')] })],
 ]
 
-const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', option_groups: [], image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, active: true, sort_order: 0 }
+const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', option_groups: [], image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, ask_use: false, active: true, sort_order: 0 }
 const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', bulk_pricing_enabled: false }
 // Sticker Bar sheet: one listing, sold as vinyl AND as a download (prices from her mockups).
 const BLANK_SHEET = { ...BLANK, collection: STICKER_BAR.collection, price: 6.5, digital_price: 4, sell_digital: true, option_groups: [STICKER_STYLE()], description: 'A sheet of 12 premium waterproof vinyl stickers. Perfect for planners, journals, laptops and water bottles.' }
@@ -32,7 +32,7 @@ const formGroups = (p) => {
   const i = groups.findIndex(g => g.choices.some(c => c.price !== 0))
   return groups.map((g, j) => j !== i ? g : { ...g, ownPrices: true, choices: g.choices.map(c => ({ ...c, price: round2(Number(p.price) + c.price) })) })
 }
-const toForm = (p) => ({ ...p, option_groups: formGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
+const toForm = (p) => ({ ...p, ask_use: Boolean(p.ask_use), option_groups: formGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
 const ALL_PREVIEW = 4 // products shown per collection on the "All" view
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
@@ -61,6 +61,7 @@ export default function AdminProducts() {
   // Settings are written straight to Supabase as the signed-in admin (RLS allows it).
   const saveSetting = async (key, raw) => {
     const value = key === 'stack_save_tiers' ? normalizeTiers(raw).reverse()
+      : key === 'business_license' ? licenseFromSettings({ business_license: raw })
       : ['shop_shipping_fee', 'shop_free_shipping_over'].includes(key) ? Math.max(0, Number(raw) || 0) : raw
     const { error } = await supabase.from('settings').upsert({ key, value })
     if (error) return flash(error.message, 'error')
@@ -178,6 +179,7 @@ export default function AdminProducts() {
           <SettingField label="Message when shop is closed" multiline value={settings.shop_closed_message || ''} onSave={v => saveSetting('shop_closed_message', v)}
             template={SHOP_CLOSED_TEMPLATE} />
           <SettingField label="In-person payment instructions (shown on quotes)" value={settings.in_person_payment_note || ''} onSave={v => saveSetting('in_person_payment_note', v)} />
+          <LicenseSettings license={licenseFromSettings(settings)} onSave={v => saveSetting('business_license', v)} />
           <p style={ui.hint}>Open/close the shop from the Orders dashboard.</p>
         </Modal>
       )}
@@ -201,7 +203,7 @@ export default function AdminProducts() {
           <StackTiers key={JSON.stringify(tiersFromSettings(settings))} value={tiersFromSettings(settings)} onSave={v => saveSetting('stack_save_tiers', v)} />
         </Modal>
       )}
-      {editing && <ProductModal product={editing} optionSets={optionSets} onSaveSet={(set) => saveOptionSets([...optionSets, set], `“${set.title}” saved — add it to any product`)} seriesList={[...new Set(products.map(x => x.series).filter(Boolean))]} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
+      {editing && <ProductModal product={editing} license={licenseFromSettings(settings)} optionSets={optionSets} onSaveSet={(set) => saveOptionSets([...optionSets, set], `“${set.title}” saved — add it to any product`)} seriesList={[...new Set(products.map(x => x.series).filter(Boolean))]} onClose={() => setEditing(null)} onSaved={(msg) => { setEditing(null); flash(msg); load() }} flash={flash} />}
       {toast}
       <Nav />
     </div>
@@ -425,6 +427,25 @@ function StackTiers({ value, onSave }) {
   )
 }
 
+// Small Business License: one fee per order when any item is for small business use.
+function LicenseSettings({ license, onSave }) {
+  const [v, setV] = useState(license)
+  useEffect(() => setV(license), [license.price, license.name, license.details]) // eslint-disable-line react-hooks/exhaustive-deps
+  const changed = String(v.price) !== String(license.price) || v.name !== license.name || v.details !== license.details
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginBottom: 12 }}>
+      <div style={ui.label}>Small Business License</div>
+      <p style={{ ...ui.hint, marginTop: 0 }}>Products set to “Ask: personal or small business use?” make shoppers choose. Small business adds this fee once per order, no matter how many items. 0 turns the question off.</p>
+      <div style={ui.row}>
+        <Field label="Price ($)" style={{ maxWidth: 120 }}><Input type="number" min={0} step="0.01" value={v.price} onChange={e => setV(x => ({ ...x, price: e.target.value }))} /></Field>
+        <Field label="Name" style={{ flex: 1, minWidth: 180 }}><Input value={v.name} onChange={e => setV(x => ({ ...x, name: e.target.value }))} /></Field>
+      </div>
+      <Field label="What it covers (shown to shoppers)" style={{ marginTop: 10 }}><TextArea rows={2} value={v.details} onChange={e => setV(x => ({ ...x, details: e.target.value }))} /></Field>
+      {changed && <Button small style={{ marginTop: 8 }} onClick={() => onSave({ ...v, price: Number(v.price) || 0 })}>Save license</Button>}
+    </div>
+  )
+}
+
 function SettingField({ label, value, onSave, type = 'text', multiline, template }) {
   const [v, setV] = useState(value)
   useEffect(() => setV(value), [value])
@@ -439,7 +460,7 @@ function SettingField({ label, value, onSave, type = 'text', multiline, template
   )
 }
 
-function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets = [], onSaveSet }) {
+function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets = [], onSaveSet, license }) {
   const [p, setP] = useState(product)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -500,6 +521,7 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
       option_groups: isDigital ? [] : optionGroups({ option_groups: groups }),
       options: [],
       image_urls: p.image_urls || [], bulk_pricing_enabled: p.bulk_pricing_enabled, active: p.active,
+      ask_use: Boolean(p.ask_use),
       sort_order: parseInt(p.sort_order, 10) || 0,
     }
     const write = (r) => p.id ? supabase.from('products').update(r).eq('id', p.id) : supabase.from('products').insert(r)
@@ -512,6 +534,15 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
         return flash('Options need a quick database update first: run 20261024000000_product_option_groups.sql in Supabase → SQL Editor.', 'error')
       }
       const { option_groups: _skip, ...rest } = row // eslint-disable-line no-unused-vars
+      ;({ error } = await write(rest))
+    }
+    // Same for the personal / small business question (20261031000000_business_license.sql).
+    if (error && /ask_use/.test(error.message)) {
+      if (row.ask_use) {
+        setBusy(false)
+        return flash('The personal / small business question needs a quick database update first: run 20261031000000_business_license.sql in Supabase → SQL Editor.', 'error')
+      }
+      const { ask_use: _skip, ...rest } = row // eslint-disable-line no-unused-vars
       ;({ error } = await write(rest))
     }
     setBusy(false)
@@ -597,6 +628,10 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
           <OptionGroupsEditor groups={p.option_groups || []} onChange={groups => setP(prev => ({ ...prev, option_groups: groups }))} sets={optionSets} onSaveSet={onSaveSet} />
         )}
         <label style={styles.check}><input type="checkbox" checked={p.bulk_pricing_enabled} onChange={set('bulk_pricing_enabled')} /> Counts toward Stack & Save</label>
+        <label style={styles.check}><input type="checkbox" checked={p.ask_use} onChange={set('ask_use')} /> Ask: personal or small business use?</label>
+        {p.ask_use && <div style={{ ...ui.hint, marginTop: -6 }}>{license?.price > 0
+          ? `Small business adds the ${license.name} (${fmt(license.price)}) — once per order, however many items.`
+          : 'Set the license price in Shop settings to start asking.'}</div>}
         <label style={styles.check}><input type="checkbox" checked={p.active} onChange={set('active')} /> Visible in shop</label>
         <Button block loading={busy} disabled={uploading || fileUploading} onClick={save}>Save product</Button>
         {p.id && <Button block variant="danger" onClick={remove}>Delete product</Button>}
