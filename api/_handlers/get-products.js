@@ -1,4 +1,5 @@
 import { db, requireMethod, HttpError } from '../_lib/core.js'
+import { digitalFiles } from '../../src/lib/cart.js'
 
 export default async function handler(req, res) {
   requireMethod(req, 'GET')
@@ -21,6 +22,9 @@ export default async function handler(req, res) {
   const { data: reviews } = await supabase.from('reviews').select('product_id, rating').eq('hidden', false)
   for (const r of reviews || []) (ratings[r.product_id] ||= []).push(r.rating)
   const rating = (id) => ratings[id] ? { avg: Math.round(ratings[id].reduce((s, n) => s + n, 0) / ratings[id].length * 10) / 10, count: ratings[id].length } : null
+  // Download files go out as names only (for "3 files · PDF, PNG"); their storage paths never leave the server.
   // eslint-disable-next-line no-unused-vars
-  return res.status(200).json((data || []).map(({ digital_file_path, active, created_at, ...p }) => ({ ...p, rating: rating(p.id) })))
+  return res.status(200).json((data || []).map(({ digital_file_path, digital_files, active, created_at, ...p }) => ({
+    ...p, digital_files: digitalFiles({ digital_files, digital_file_path, digital_file_name: p.digital_file_name }).map(f => ({ name: f.name })), rating: rating(p.id),
+  })))
 }

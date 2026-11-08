@@ -1,5 +1,5 @@
 import { db, HttpError } from './core.js'
-import { cartTotals, discountAmount, lineFormat, unitPrice, offersDigital, resolveOptions, asksUse } from '../../src/lib/cart.js'
+import { cartTotals, discountAmount, lineFormat, unitPrice, offersDigital, resolveOptions, asksUse, digitalFiles } from '../../src/lib/cart.js'
 import { round2, fmt } from '../../src/lib/money.js'
 
 export { discountAmount }
@@ -45,7 +45,7 @@ export async function priceCart(items, code, opts = {}) {
         continue
       }
       seenDigital.add(p.id)
-      if (!p.digital_file_path) throw new HttpError(400, `${p.name} isn't available for download yet`)
+      if (!digitalFiles(p).some(f => f.path)) throw new HttpError(400, `${p.name} isn't available for download yet`)
     }
     const quantity = digital ? 1 : Math.max(1, Math.min(10000, parseInt(i.quantity, 10) || 1))
     // Options (and their price changes) apply to the physical format only. `option` is the old single-choice field.
@@ -56,7 +56,11 @@ export async function priceCart(items, code, opts = {}) {
       productId: p.id,
       productName: p.name,
       kind: digital ? 'digital' : 'physical',
-      ...(digital ? { digitalFilePath: p.digital_file_path, digitalFileName: p.digital_file_name } : {}),
+      // Every file the buyer gets (paths stay server-side; publicOrder() strips them).
+      ...(digital ? (() => {
+        const files = digitalFiles(p).filter(f => f.path)
+        return { digitalFilePath: files[0].path, digitalFileName: files[0].name, digitalFiles: files }
+      })() : {}),
       option,
       selections: picked?.selections || null,
       ...(use ? { use } : {}),

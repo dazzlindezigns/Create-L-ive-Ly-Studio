@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { api, uploadFile, APP_URL } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { COLLECTIONS, STICKER_BAR, SHOP_CLOSED_TEMPLATE, PARTNER_PROGRAM, FINDS } from '../brand'
-import { normalizeTiers, tiersFromSettings, optionGroups, licenseFromSettings } from '../lib/cart'
+import { normalizeTiers, tiersFromSettings, optionGroups, licenseFromSettings, digitalFiles } from '../lib/cart'
 import { cleanSets, groupFromSet, applySet } from '../lib/optionSets'
 import FindsManager from '../components/FindsManager'
 import Nav from '../components/Nav'
@@ -20,7 +20,7 @@ const OPTION_PRESETS = [
   ['Custom', () => ({ name: '', choices: [choice('')] })],
 ]
 
-const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', option_groups: [], image_urls: [], digital_file_path: null, digital_file_name: null, bulk_pricing_enabled: true, ask_use: false, active: true, sort_order: 0 }
+const BLANK = { kind: 'physical', collection: '', series: '', badge: '', name: '', description: '', price: '', digital_price: '', sell_digital: false, stock: '', option_groups: [], image_urls: [], digital_file_path: null, digital_file_name: null, digital_files: [], bulk_pricing_enabled: true, ask_use: false, active: true, sort_order: 0 }
 const BLANK_DIGITAL = { ...BLANK, kind: 'digital', collection: 'paper-studio', bulk_pricing_enabled: false }
 // Sticker Bar sheet: one listing, sold as vinyl AND as a download (prices from her mockups).
 const BLANK_SHEET = { ...BLANK, collection: STICKER_BAR.collection, price: 6.5, digital_price: 4, sell_digital: true, option_groups: [STICKER_STYLE()], description: 'A sheet of 12 premium waterproof vinyl stickers. Perfect for planners, journals, laptops and water bottles.' }
@@ -32,7 +32,7 @@ const formGroups = (p) => {
   const i = groups.findIndex(g => g.choices.some(c => c.price !== 0))
   return groups.map((g, j) => j !== i ? g : { ...g, ownPrices: true, choices: g.choices.map(c => ({ ...c, price: round2(Number(p.price) + c.price) })) })
 }
-const toForm = (p) => ({ ...p, ask_use: Boolean(p.ask_use), option_groups: formGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
+const toForm = (p) => ({ ...p, ask_use: Boolean(p.ask_use), digital_files: digitalFiles(p), option_groups: formGroups(p), series: p.series || '', badge: p.badge || '', stock: p.stock ?? '', digital_price: p.digital_price ?? '', sell_digital: p.kind !== 'digital' && p.digital_price != null })
 const ALL_PREVIEW = 4 // products shown per collection on the "All" view
 const MAX_DIGITAL_MB = 50 // matches the digital-products bucket limit in supabase/migrations/
 
@@ -378,7 +378,7 @@ function ProductRow({ p, onClick }) {
     !p.active && ['Hidden', 'var(--muted)', 'rgba(0,0,0,0.06)'],
     p.kind === 'digital' && ['Digital', 'var(--primary)', 'var(--card2)'],
     both && ['Vinyl + digital', 'var(--primary)', 'var(--card2)'],
-    (p.kind === 'digital' || both) && !p.digital_file_path && ['Needs file', 'var(--danger)', 'rgba(200,65,75,0.08)'],
+    (p.kind === 'digital' || both) && !digitalFiles(p).some(f => f.path) && ['Needs file', 'var(--danger)', 'rgba(200,65,75,0.08)'],
     p.kind !== 'digital' && p.stock != null && p.stock <= LOW_STOCK && [p.stock ? `${p.stock} left` : 'Sold out', p.stock ? 'var(--warning)' : 'var(--danger)', 'rgba(199,128,43,0.1)'],
     p.badge && [p.badge, 'var(--secondary)', 'var(--card2)'],
   ].filter(Boolean)
@@ -469,18 +469,29 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
   const hasFile = isDigital || p.sell_digital // a download file is part of this listing
   const set = (k) => (e) => setP(prev => ({ ...prev, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
-  // Digital files go to the PRIVATE digital-products bucket; we store only the path.
-  const onDigitalFile = async (e) => {
-    const file = e.target.files[0]
+  // Digital files go to the PRIVATE digital-products bucket; we store only the paths.
+  // Pick several at once (or add more later); buyers get a download button for each.
+  const files = p.digital_files || []
+  const onDigitalFiles = async (e) => {
+    const picked = [...e.target.files]
     e.target.value = ''
-    if (!file) return
-    if (file.size > MAX_DIGITAL_MB * 1024 * 1024) return flash(`File is over ${MAX_DIGITAL_MB} MB — zip it or compress it first`, 'error')
+    const tooBig = picked.filter(f => f.size > MAX_DIGITAL_MB * 1024 * 1024)
+    if (tooBig.length) flash(`${tooBig.map(f => f.name).join(', ')} ${tooBig.length > 1 ? 'are' : 'is'} over ${MAX_DIGITAL_MB} MB — zip or compress first`, 'error')
+    const ok = picked.filter(f => !tooBig.includes(f))
+    if (!ok.length) return
     setFileUploading(true)
     try {
-      const path = await uploadFile(file, 'digital-products', { auth: true })
-      setP(prev => ({ ...prev, digital_file_path: path, digital_file_name: file.name }))
+      for (const file of ok) {
+        const path = await uploadFile(file, 'digital-products', { auth: true })
+        setP(prev => ({ ...prev, digital_files: [...(prev.digital_files || []), { path, name: file.name }] }))
+      }
     } catch (err) { flash(err.message, 'error') } finally { setFileUploading(false) }
   }
+  const removeFile = (i) => setP(prev => ({ ...prev, digital_files: prev.digital_files.filter((_, j) => j !== i) }))
+  const moveFile = (i, d) => setP(prev => {
+    const list = [...prev.digital_files]; const [f] = list.splice(i, 1); list.splice(i + d, 0, f)
+    return { ...prev, digital_files: list }
+  })
 
   const pricedGroup = !isDigital && (p.option_groups || []).find(g => g.ownPrices)
   const pricedFrom = pricedGroup ? Math.min(...pricedGroup.choices.map(c => Number(c.price)).filter(v => v > 0)) : null
@@ -505,15 +516,17 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
     }
     if (!(base > 0)) return missing('product-price', `Add the ${p.sell_digital && !isDigital ? 'physical ' : ''}price (above), or tick “Each choice has its own price” on an option`)
     if (p.sell_digital && !isDigital && !(Number(p.digital_price) > 0)) return flash('Add the digital price', 'error')
-    if (hasFile && !p.digital_file_path && p.active) return flash('Upload the download file, or untick "Visible in shop" to save a draft', 'error')
+    if (hasFile && !files.length && p.active) return flash('Upload the download file, or untick "Visible in shop" to save a draft', 'error')
     setBusy(true)
     const row = {
       kind: isDigital ? 'digital' : 'physical',
       collection: p.collection || null,
       series: p.series?.trim() || null,
       badge: p.badge || null,
-      digital_file_path: hasFile ? p.digital_file_path : null,
-      digital_file_name: hasFile ? p.digital_file_name : null,
+      // The first file also fills the older single-file columns, so everything that reads them keeps working.
+      digital_files: hasFile ? files : [],
+      digital_file_path: hasFile ? files[0]?.path || null : null,
+      digital_file_name: hasFile ? files[0]?.name || null : null,
       digital_price: !isDigital && p.sell_digital ? round2(p.digital_price) : null,
       stock: !isDigital && String(p.stock).trim() !== '' ? Math.max(0, parseInt(p.stock, 10) || 0) : null,
       name: p.name.trim(), description: p.description?.trim() || null, price: round2(base),
@@ -534,6 +547,15 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
         return flash('Options need a quick database update first: run 20261024000000_product_option_groups.sql in Supabase → SQL Editor.', 'error')
       }
       const { option_groups: _skip, ...rest } = row // eslint-disable-line no-unused-vars
+      ;({ error } = await write(rest))
+    }
+    // Several download files need 20261108000000_multiple_download_files.sql; one file still saves without it.
+    if (error && /digital_files/.test(error.message)) {
+      if (row.digital_files.length > 1) {
+        setBusy(false)
+        return flash('More than one download file needs a quick database update first: run 20261108000000_multiple_download_files.sql in Supabase → SQL Editor.', 'error')
+      }
+      const { digital_files: _skip, ...rest } = row // eslint-disable-line no-unused-vars
       ;({ error } = await write(rest))
     }
     // Same for the personal / small business question (20261031000000_business_license.sql).
@@ -611,16 +633,23 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
         )}
         {hasFile && (
           <div>
-            <div style={ui.label}>Download file</div>
+            <div style={ui.label}>Download files{files.length > 1 ? ` (${files.length})` : ''}</div>
+            {files.map((f, i) => (
+              <div key={f.path || i} style={styles.fileRow}>
+                <span style={styles.fileType}>{(f.name || '').split('.').pop().toUpperCase().slice(0, 4) || 'FILE'}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 14, fontWeight: 600 }}>{f.name}</span>
+                {files.length > 1 && <button type="button" onClick={() => moveFile(i, -1)} disabled={i === 0} style={{ ...styles.fileBtn, opacity: i === 0 ? 0.3 : 1 }} aria-label="Move up">▲</button>}
+                {files.length > 1 && <button type="button" onClick={() => moveFile(i, 1)} disabled={i === files.length - 1} style={{ ...styles.fileBtn, opacity: i === files.length - 1 ? 0.3 : 1 }} aria-label="Move down">▼</button>}
+                <button type="button" onClick={() => removeFile(i)} style={styles.fileBtn} aria-label={`Remove ${f.name}`}>✕</button>
+              </div>
+            ))}
             <label style={{ ...styles.fileDrop, opacity: fileUploading ? 0.6 : 1 }}>
-              <input type="file" onChange={onDigitalFile} disabled={fileUploading} style={{ display: 'none' }} />
-              {fileUploading ? 'Uploading…'
-                : p.digital_file_name ? <><strong>{p.digital_file_name}</strong><span style={ui.muted}> · tap to replace</span></>
-                : '+ Upload the file buyers will download'}
+              <input type="file" multiple onChange={onDigitalFiles} disabled={fileUploading} style={{ display: 'none' }} />
+              {fileUploading ? 'Uploading…' : files.length ? '+ Add more files' : '+ Upload the files buyers will download'}
             </label>
             <div style={ui.hint}>
-              PDF, ZIP, PNG, SVG, cut files (DXF, Studio3), Procreate, fonts… up to {MAX_DIGITAL_MB} MB. For multiple files, upload a ZIP.
-              Stored privately — buyers only get an expiring link after they pay.
+              Pick one or several at once: PDF, ZIP, PNG, SVG, cut files (DXF, Studio3), Procreate, fonts… up to {MAX_DIGITAL_MB} MB each.
+              Buyers get a download button for every file. Stored privately — links only work after they pay.
             </div>
           </div>
         )}
@@ -938,6 +967,9 @@ const styles = {
   toggle: { display: 'flex', background: 'var(--card2)', borderRadius: 50, padding: 4, gap: 4 },
   toggleBtn: { flex: 1, padding: '10px 12px', borderRadius: 50, border: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   toggleOn: { background: '#fff', color: 'var(--dark)', boxShadow: '0 1px 6px rgba(0,0,0,0.08)' },
+  fileRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', marginBottom: 6, borderRadius: 12, border: '1px solid var(--border)', background: '#fff' },
+  fileType: { flexShrink: 0, minWidth: 38, textAlign: 'center', padding: '4px 6px', borderRadius: 8, background: 'var(--card2)', color: 'var(--secondary)', fontSize: 10.5, fontWeight: 800 },
+  fileBtn: { flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 12, color: 'var(--mid)' },
   fileDrop: { display: 'block', textAlign: 'center', padding: 18, borderRadius: 12, border: '2px dashed var(--border)', background: 'var(--card2)', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--secondary)', wordBreak: 'break-all' },
   aiBox: { background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 14, padding: 14 },
   thumbSm: { width: 52, height: 52, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' },

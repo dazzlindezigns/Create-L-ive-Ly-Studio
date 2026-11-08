@@ -1,5 +1,5 @@
 import { db, requireMethod, getOrder, HttpError } from '../_lib/core.js'
-import { digitalLines, isPaidInFull, signedDownloads, LINK_TTL_SECONDS } from '../_lib/downloads.js'
+import { digitalLines, downloadFiles, isPaidInFull, signedDownloads, LINK_TTL_SECONDS } from '../_lib/downloads.js'
 
 // Customer downloads page (/downloads/:orderId). Links are minted fresh on every visit
 // and only once the order is paid in full.
@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   res.setHeader('Cache-Control', 'no-store')
   if (!isPaidInFull(order)) {
-    return res.status(200).json({ paid: false, customerName: order.customer_name, items: digitalLines(order).map(l => ({ name: l.productName, fileName: l.digitalFileName })) })
+    return res.status(200).json({ paid: false, customerName: order.customer_name, items: downloadFiles(order).map(f => ({ name: f.name, fileName: f.fileName })) })
   }
 
   const items = await signedDownloads(order)

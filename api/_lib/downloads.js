@@ -7,7 +7,15 @@ import { REFUND_POLICY } from '../../src/brand.js'
 export const LINK_TTL_SECONDS = 60 * 60 * 24 // 24 hours
 
 export const digitalLines = (order) =>
-  (Array.isArray(order.shop_cart) ? order.shop_cart : []).filter(l => l.kind === 'digital' && l.digitalFilePath)
+  (Array.isArray(order.shop_cart) ? order.shop_cart : []).filter(l => l.kind === 'digital' && lineFiles(l).length)
+
+// The files on one order line. Older orders saved one digitalFilePath / digitalFileName.
+export const lineFiles = (l) => Array.isArray(l.digitalFiles) && l.digitalFiles.length
+  ? l.digitalFiles.filter(f => f.path)
+  : l.digitalFilePath ? [{ path: l.digitalFilePath, name: l.digitalFileName }] : []
+
+// One entry per file: { name (product), fileName, path }.
+export const downloadFiles = (order) => digitalLines(order).flatMap(l => lineFiles(l).map(f => ({ name: l.productName, fileName: f.name, path: f.path })))
 
 export const hasPhysicalLines = (order) =>
   (Array.isArray(order.shop_cart) ? order.shop_cart : []).some(l => l.kind !== 'digital')
@@ -18,9 +26,9 @@ export const isPaidInFull = (order) => Boolean(order.balance_paid) || (Number(or
 export async function signedDownloads(order) {
   const storage = db().storage.from('digital-products')
   const out = []
-  for (const l of digitalLines(order)) {
-    const { data, error } = await storage.createSignedUrl(l.digitalFilePath, LINK_TTL_SECONDS, { download: l.digitalFileName || true })
-    out.push({ name: l.productName, fileName: l.digitalFileName, url: error ? null : data.signedUrl, error: error ? 'File unavailable — please contact us' : null })
+  for (const f of downloadFiles(order)) {
+    const { data, error } = await storage.createSignedUrl(f.path, LINK_TTL_SECONDS, { download: f.fileName || true })
+    out.push({ name: f.name, fileName: f.fileName, url: error ? null : data.signedUrl, error: error ? 'File unavailable — please contact us' : null })
   }
   return out
 }
@@ -29,7 +37,8 @@ export async function signedDownloads(order) {
 export async function sendDownloadEmail(order) {
   const items = digitalLines(order)
   if (!items.length) return
-  const list = items.map(l => `<li style="margin:4px 0;">${esc(l.productName)}${l.digitalFileName ? ` <span style="color:#999;">(${esc(l.digitalFileName)})</span>` : ''}</li>`).join('')
+  const names = (l) => lineFiles(l).map(f => f.name).filter(Boolean).join(', ')
+  const list = items.map(l => `<li style="margin:4px 0;">${esc(l.productName)}${names(l) ? ` <span style="color:#999;">(${esc(names(l))})</span>` : ''}</li>`).join('')
   await sendEmail({
     to: order.customer_email,
     log: { orderId: order.id, kind: 'downloads' },

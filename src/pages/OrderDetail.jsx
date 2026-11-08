@@ -349,7 +349,7 @@ function DigitalSection({ order, flash, onCopy }) {
         <span style={ui.muted}>{paidInFull ? `Opened ${order.download_count || 0}×` : 'Locked until paid'}</span>
       </div>
       {items.map((l, i) => (
-        <div key={i} style={styles.line}><span>{l.productName}</span><span style={ui.muted}>{l.digitalFileName}</span></div>
+        <div key={i} style={styles.line}><span>{l.productName}</span><span style={{ ...ui.muted, textAlign: 'right' }}>{(l.digitalFiles?.length ? l.digitalFiles.map(f => f.name) : [l.digitalFileName]).filter(Boolean).join(', ')}</span></div>
       ))}
       <div style={{ ...ui.row, marginTop: 12 }}>
         <Button variant="secondary" small loading={sending} disabled={!paidInFull} onClick={resend}>Re-send download email</Button>

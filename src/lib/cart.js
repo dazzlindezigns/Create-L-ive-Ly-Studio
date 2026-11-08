@@ -21,7 +21,14 @@ export const tierFor = (tiers, qty) => normalizeTiers(tiers).find(t => qty >= t.
 
 // Which price a product line uses. Digital-only products are always digital; a physical
 // product offers a download too when it has a digital price and an uploaded file.
-export const offersDigital = (p) => p.kind === 'digital' || (p.digital_price != null && Boolean(p.digital_file_name || p.digital_file_path))
+// A product's download files: [{ path, name }] (the shop gets names only). Older products stored a
+// single digital_file_path / digital_file_name, read here as a one-file list.
+export function digitalFiles(p) {
+  const list = (Array.isArray(p?.digital_files) ? p.digital_files : []).filter(f => f && (f.path || f.name))
+  if (list.length) return list
+  return p?.digital_file_path || p?.digital_file_name ? [{ path: p.digital_file_path, name: p.digital_file_name }] : []
+}
+export const offersDigital = (p) => p.kind === 'digital' || (p.digital_price != null && digitalFiles(p).length > 0)
 export const offersPhysical = (p) => p.kind !== 'digital'
 export function lineFormat(p, wanted) {
   if (p.kind === 'digital') return 'digital'

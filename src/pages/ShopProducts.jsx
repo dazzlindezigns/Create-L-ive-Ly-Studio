@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { BRAND, COLLECTIONS, STICKER_BAR, REFUND_POLICY, PARTNER_PROGRAM } from '../brand'
-import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions, licenseFromSettings, asksUse } from '../lib/cart'
+import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions, licenseFromSettings, asksUse, digitalFiles } from '../lib/cart'
 import { ui, Button, Field, Input, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 import Stars from '../components/Stars'
@@ -12,6 +12,13 @@ import { currentRef, partnerSelf, clearPartnerSelf } from '../lib/ref'
 const CART_KEY = 'shop-cart-v3'
 // Some option choices cost more (e.g. bigger sizes), so the listed price is a starting price.
 const priceVaries = (p) => p.kind !== 'digital' && optionGroups(p).some(g => g.choices.some(c => c.price > 0))
+// "ZIP file" or "3 files · PDF, PNG" for the digital note on a product.
+function fileSummary(p) {
+  const types = [...new Set(digitalFiles(p).map(f => (f.name || '').split('.').pop().toUpperCase()).filter(t => t && t.length <= 5))]
+  const n = digitalFiles(p).length
+  if (!n) return ''
+  return n === 1 ? `${types[0] || ''} file`.trim() : `${n} files${types.length ? ` · ${types.join(', ')}` : ''}`
+}
 const loadCart = () => { try { return JSON.parse(localStorage.getItem(CART_KEY)) || [] } catch { return [] } }
 
 // Products, settings and the cart (saved in this browser) — shared by the shop and single product pages.
@@ -324,7 +331,7 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
       {isDigital ? (
         <div style={styles.digitalNote}>
           ⬇️ <strong>Instant digital download</strong>
-          {product.digital_file_name && <> · {product.digital_file_name.split('.').pop().toUpperCase()} file</>}
+          {fileSummary(product) && <> · {fileSummary(product)}</>}
           <div style={{ ...ui.hint, marginTop: 4 }}>Your download link is emailed as soon as payment goes through. Nothing is shipped.</div>
           <div style={{ ...ui.hint, marginTop: 4, fontWeight: 600, color: 'var(--mid)' }}>{REFUND_POLICY.digital}</div>
         </div>

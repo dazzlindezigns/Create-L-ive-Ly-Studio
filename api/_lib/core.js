@@ -66,7 +66,10 @@ export function publicOrder(order) {
   // Calculator breakdown keeps supply costs + labor internally; customers only see invoice lines.
   out.quote_breakdown = order.quote_breakdown?.lines ? { lines: order.quote_breakdown.lines } : null
   // Storage paths for digital files stay server-side; customers get signed links via /api/get-downloads.
-  if (Array.isArray(order.shop_cart)) out.shop_cart = order.shop_cart.map(({ digitalFilePath, ...line }) => line)
+  if (Array.isArray(order.shop_cart)) {
+    out.shop_cart = order.shop_cart.map(({ digitalFilePath, digitalFiles, ...line }) => ( // eslint-disable-line no-unused-vars
+      digitalFiles ? { ...line, digitalFiles: digitalFiles.map(f => ({ name: f.name })) } : line))
+  }
   return out
 }
 
