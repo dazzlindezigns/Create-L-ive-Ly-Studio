@@ -36,7 +36,8 @@ export function lineFormat(p, wanted) {
 }
 export const unitPrice = (p, format) => round2(format === 'digital' && p.kind !== 'digital' ? p.digital_price : p.price)
 // Option groups the buyer picks from (physical format only), e.g. Size, Color, Sticker style.
-// Each choice can change the price. Older products stored a flat `options` list — read as one group.
+// Each choice can change the price, and can have a picture (`image`, a public product-images URL) —
+// a group with pictures shows as swatches (e.g. Pattern). Older products stored a flat `options` list — read as one group.
 export function optionGroups(p) {
   const raw = Array.isArray(p.option_groups) && p.option_groups.length ? p.option_groups
     : p.options?.length ? [{ name: 'Option', choices: p.options.map(label => ({ label, price: 0 })) }] : []
@@ -46,11 +47,15 @@ export function optionGroups(p) {
       ...(g?.set ? { set: String(g.set).slice(0, 64) } : {}),
       name: String(g?.name || 'Option').trim().slice(0, 40),
       choices: (Array.isArray(g?.choices) ? g.choices : [])
-        .map(c => ({ label: String(c?.label || '').trim().slice(0, 60), price: round2(c?.price) }))
+        .map(c => ({ label: String(c?.label || '').trim().slice(0, 60), price: round2(c?.price), ...(choiceImage(c) ? { image: choiceImage(c) } : {}) }))
         .filter(c => c.label),
     }))
     .filter(g => g.choices.length)
 }
+
+// A choice's picture, only when it's a real web address.
+export const choiceImage = (c) => typeof c?.image === 'string' && /^https?:\/\/\S+$/.test(c.image) && c.image.length <= 600 ? c.image : null
+export const hasSwatches = (g) => g.choices.some(c => c.image)
 
 // Wanted picks ({ Size: '4 inch' }) → valid picks (first choice when missing or unknown),
 // the extra per-unit cost, and a readable label like "Size: 4 inch · Style: Die-cut".
@@ -58,12 +63,13 @@ export function resolveOptions(p, wanted = {}) {
   const groups = optionGroups(p)
   const picks = groups.map(g => {
     const c = g.choices.find(x => x.label === wanted?.[g.name]) || g.choices[0]
-    return { group: g.name, label: c.label, price: c.price }
+    return { group: g.name, label: c.label, price: c.price, image: c.image || null }
   })
   return {
     selections: picks.length ? Object.fromEntries(picks.map(x => [x.group, x.label])) : null,
     extra: round2(sum(picks, x => x.price)),
     text: picks.map(x => (groups.length === 1 && x.group === 'Option' ? x.label : `${x.group}: ${x.label}`)).join(' · ') || null,
+    image: picks.find(x => x.image)?.image || null, // e.g. the chosen pattern, shown on the order
   }
 }
 

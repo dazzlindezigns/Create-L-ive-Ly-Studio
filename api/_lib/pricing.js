@@ -63,6 +63,7 @@ export async function priceCart(items, code, opts = {}) {
       })() : {}),
       option,
       selections: picked?.selections || null,
+      ...(picked?.image ? { optionImage: picked.image } : {}),
       ...(use ? { use } : {}),
       quantity,
       unitPrice: price,

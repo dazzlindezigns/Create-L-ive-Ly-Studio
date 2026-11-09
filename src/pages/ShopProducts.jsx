@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { fmt, round2 } from '../lib/money'
 import { BRAND, COLLECTIONS, STICKER_BAR, REFUND_POLICY, PARTNER_PROGRAM } from '../brand'
-import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions, licenseFromSettings, asksUse, digitalFiles } from '../lib/cart'
+import { cartTotals, tiersFromSettings, tierFor, lineFormat, unitPrice, offersDigital, offersPhysical, isSticker, optionGroups, resolveOptions, licenseFromSettings, asksUse, digitalFiles, hasSwatches } from '../lib/cart'
 import { ui, Button, Field, Input, Select, Loading, Modal } from '../components/ui'
 import { SiteHeader, SiteFooter } from '../components/SiteChrome'
 import Stars from '../components/Stars'
@@ -48,7 +48,7 @@ export function useShop() {
     const unit = round2(unitPrice(product, format) + (opts?.extra || 0))
     // Older carts (or a product that just started asking) have no answer yet — the cart asks for it.
     const use = asksUse(product, license) ? (c.use === 'personal' || c.use === 'business' ? c.use : null) : null
-    return { ...c, format, quantity, product, unit, optionText: opts?.text, total: round2(unit * quantity), asksUse: asksUse(product, license), use }
+    return { ...c, format, quantity, product, unit, optionText: opts?.text, optionImage: opts?.image || null, total: round2(unit * quantity), asksUse: asksUse(product, license), use }
   })
   const stackTiers = tiersFromSettings(settings)
   const stackCount = lines.filter(l => l.product.bulk_pricing_enabled !== false).reduce((s, l) => s + l.quantity, 0)
@@ -274,6 +274,8 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
   const [added, setAdded] = useState(null) // last combination added, e.g. "2 × Color: Blush · Size: Large"
   const [qty, setQty] = useState(1)
   const [imgIdx, setImgIdx] = useState(0)
+  // Tapping a pattern swatch shows its picture in the big photo; tapping a product photo goes back.
+  const [swatchShown, setSwatchShown] = useState(() => product.image_urls?.length ? null : resolveOptions(product).image)
   const license = licenseFromSettings(settings)
   const asks = asksUse(product, license)
   const [use, setUse] = useState(null) // 'personal' | 'business' — no default: they choose
@@ -287,13 +289,16 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
   const shipNote = Number(settings.shop_free_shipping_over) > 0 ? ` Free shipping over ${fmt(settings.shop_free_shipping_over)}.` : ''
   return (
     <>
+      {!product.image_urls?.length && swatchShown && (
+        <img src={swatchShown} alt="" style={{ width: '100%', borderRadius: 14, background: 'var(--card2)', aspectRatio: '1', objectFit: 'contain' }} />
+      )}
       {product.image_urls?.length > 0 && (
         <>
-          <img src={product.image_urls[imgIdx]} alt="" style={{ width: '100%', borderRadius: 14, background: 'var(--card2)', aspectRatio: '1', objectFit: 'contain' }} />
+          <img src={swatchShown || product.image_urls[imgIdx]} alt="" style={{ width: '100%', borderRadius: 14, background: 'var(--card2)', aspectRatio: '1', objectFit: 'contain' }} />
           {product.image_urls.length > 1 && (
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }} className="scroll-x">
               {product.image_urls.map((u, i) => (
-                <img key={u} src={u} alt="" onClick={() => setImgIdx(i)} style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: i === imgIdx ? '2px solid var(--primary)' : '2px solid transparent' }} />
+                <img key={u} src={u} alt="" onClick={() => { setImgIdx(i); setSwatchShown(null) }} style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: i === imgIdx && !swatchShown ? '2px solid var(--primary)' : '2px solid transparent' }} />
               ))}
             </div>
           )}
@@ -338,7 +343,24 @@ export function ProductDetail({ product, stackCount, stackTiers, settings, onAdd
       ) : (
       <>
       {both && <div style={{ ...ui.hint, marginTop: 8 }}>{sticker ? 'Premium waterproof vinyl, packed flat so nothing bends.' : 'A finished piece, made and packed by hand.'}{shipNote}</div>}
-      {groups.map(g => (
+      {groups.map(g => hasSwatches(g) ? (
+        <div key={g.name} style={{ marginTop: 14 }}>
+          <div style={ui.label}>{g.name}: <span style={{ fontWeight: 500, color: 'var(--mid)' }}>{picks[g.name]}</span></div>
+          <div style={styles.swatches}>
+            {g.choices.map(c => {
+              const on = picks[g.name] === c.label
+              return (
+                <button key={c.label} type="button" aria-pressed={on} title={c.label}
+                  onClick={() => { setPicks(prev => ({ ...prev, [g.name]: c.label })); if (c.image) setSwatchShown(c.image) }}
+                  style={{ ...styles.swatch, ...(on ? styles.swatchOn : {}) }}>
+                  {c.image ? <img src={c.image} alt="" style={styles.swatchImg} /> : <span style={{ ...styles.swatchImg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, padding: 4, textAlign: 'center' }}>{c.label}</span>}
+                  <span style={styles.swatchLabel}>{c.label}{c.price !== 0 && <> · {pricedGroups.length === 1 && pricedGroups[0] === g ? fmt(unitPrice(product, 'physical') + c.price) : `${c.price > 0 ? '+' : '−'}${fmt(Math.abs(c.price))}`}</>}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
         <div key={g.name} style={{ marginTop: 14 }}>
           <div style={ui.label}>{g.name}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -528,6 +550,7 @@ export function CartModal({ lines, settings, stackTiers, shopOpen, onClose, setQ
           {lines.length === 0 && <p style={ui.muted}>Your cart is empty.</p>}
           {lines.map(l => (
             <div key={l.key} style={styles.cartLine}>
+              {l.optionImage && <img src={l.optionImage} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />}
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{l.product.name}</div>
                 <div style={ui.muted}>{l.format === 'digital' ? 'Digital download' : `${isSticker(l.product) && offersDigital(l.product) ? 'Vinyl · ' : ''}${l.optionText ? `${l.optionText} · ` : ''}${fmt(l.unit)} each`}</div>
@@ -652,14 +675,19 @@ const styles = {
   digitalTag: { position: 'absolute', top: 8, left: 8, background: 'var(--primary)', color: '#fff', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '3px 8px', borderRadius: 20 },
   ctaPink: { display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, var(--accent), var(--primary))', color: '#fff', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', textDecoration: 'none' },
   ctaGhost: { font: 'inherit', display: 'inline-flex', alignItems: 'center', background: '#fff', color: 'var(--dark)', border: '1px solid var(--border)', padding: '12px 18px', borderRadius: 13, fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer' },
-  choice: { font: 'inherit', padding: '9px 14px', borderRadius: 12, border: '1.5px solid var(--border)', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
+  choice: { font: 'inherit', padding: '9px 14px', borderRadius: 12, borderWidth: 1.5, borderStyle: 'solid', borderColor: 'var(--border)', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   choiceOn: { borderColor: 'var(--primary)', background: 'var(--card2)', color: 'var(--dark)', boxShadow: '0 0 0 1px var(--primary) inset' },
   added: { marginTop: 14, padding: '12px 14px', borderRadius: 12, background: 'rgba(47,158,98,0.08)', border: '1px solid rgba(47,158,98,0.3)', fontSize: 14 },
   addCode: { background: 'none', border: 'none', padding: '12px 0 0', fontSize: 13, fontWeight: 600, color: 'var(--secondary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 },
   series: { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 2 },
   formats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
-  formatBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '12px 8px', borderRadius: 14, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', font: 'inherit', color: 'var(--dark)' },
+  formatBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '12px 8px', borderRadius: 14, borderWidth: 1.5, borderStyle: 'solid', borderColor: 'var(--border)', background: '#fff', cursor: 'pointer', font: 'inherit', color: 'var(--dark)' },
   useTag: { font: 'inherit', whiteSpace: 'nowrap', display: 'inline-block', marginTop: 4, padding: '2px 9px', borderRadius: 50, border: '1px solid var(--border)', background: 'var(--card2)', fontSize: 11.5, fontWeight: 700, color: 'var(--secondary)', cursor: 'pointer' },
+  swatches: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 10 },
+  swatch: { font: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 5, padding: 4, borderRadius: 14, borderWidth: 1.5, borderStyle: 'solid', borderColor: 'var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--dark)' },
+  swatchOn: { borderColor: 'var(--primary)', boxShadow: '0 0 0 2px var(--primary) inset' },
+  swatchImg: { width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 10, background: 'var(--card2)' },
+  swatchLabel: { fontSize: 11.5, fontWeight: 600, lineHeight: 1.25, textAlign: 'center', padding: '0 2px 3px' },
   formatOn: { borderColor: 'var(--primary)', background: 'var(--card2)', boxShadow: '0 0 0 2px var(--primary) inset' },
   partnerBanner: { marginTop: 14, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.5 },
   partnerOff: { display: 'block', background: 'none', border: 'none', padding: '4px 0 0', color: 'var(--secondary)', fontWeight: 700, fontSize: 12, cursor: 'pointer' },

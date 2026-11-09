@@ -243,11 +243,14 @@ function ItemsSection({ order, payments, flash, onRecordPayment, onRefund, sendS
       <h2 style={ui.h2}>What they ordered</h2>
       {lines.map((l, i) => (
         <div key={i} style={styles.line}>
-          <span style={{ minWidth: 0 }}>
+          <span style={{ minWidth: 0, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            {l.optionImage && <a href={l.optionImage} target="_blank" rel="noreferrer"><img src={l.optionImage} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} /></a>}
+            <span style={{ minWidth: 0 }}>
             <strong>{l.kind === 'digital' ? '' : `${l.quantity} × `}{l.productName}</strong>
             {(l.option || l.kind === 'digital') && <div style={ui.muted}>{l.kind === 'digital' ? '⬇ Digital download' : l.option}</div>}
             {l.use === 'business' && <div style={{ ...ui.muted, color: 'var(--secondary)', fontWeight: 700 }}>💼 Small business use</div>}
             {l.use === 'personal' && <div style={ui.muted}>Personal use</div>}
+            </span>
           </span>
           <span>{fmt(l.itemTotal)}</span>
         </div>

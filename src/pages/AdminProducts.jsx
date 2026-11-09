@@ -212,6 +212,29 @@ export default function AdminProducts() {
 
 // Option groups (Size, Color, Sticker style…). Customers pick one choice per group on the
 // product page; a choice's price is added to (or taken off) the base price.
+// The picture for one option choice (a pattern, a color): tap to upload, tap again to change or remove.
+function ChoiceImage({ image, label, onChange }) {
+  const [busy, setBusy] = useState(false)
+  const pick = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    try { onChange(await uploadFile(file, 'product-images', { auth: true })) }
+    catch (err) { alert(err.message) } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <label style={{ ...styles.choiceImg, ...(image ? { backgroundImage: `url("${image}")`, borderStyle: 'solid' } : {}), opacity: busy ? 0.5 : 1 }}
+        title={image ? `Change the picture for ${label || 'this choice'}` : `Add a picture for ${label || 'this choice'}`}>
+        <input type="file" accept="image/*" onChange={pick} disabled={busy} style={{ display: 'none' }} />
+        {busy ? '…' : image ? '' : '📷'}
+      </label>
+      {image && !busy && <button type="button" onClick={() => onChange(undefined)} style={styles.choiceImgX} aria-label={`Remove the picture for ${label || 'this choice'}`}>×</button>}
+    </div>
+  )
+}
+
 function OptionGroupsEditor({ groups, onChange, sets = [], onSaveSet }) {
   const setGroup = (i, patch) => onChange(groups.map((g, j) => j === i ? { ...g, ...patch } : g))
   const setChoice = (i, k, patch) => setGroup(i, { choices: groups[i].choices.map((c, j) => j === k ? { ...c, ...patch } : c) })
@@ -234,6 +257,7 @@ function OptionGroupsEditor({ groups, onChange, sets = [], onSaveSet }) {
           )}
           {g.choices.map((c, k) => (
             <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+              <ChoiceImage image={c.image} label={c.label} onChange={image => setChoice(i, k, { image })} />
               <Input value={c.label} placeholder="Choice" onChange={e => setChoice(i, k, { label: e.target.value })} style={{ flex: 2, padding: '9px 10px', fontSize: 14 }} />
               {(g.ownPrices || g.choices.some(x => x.price)) && (
                 <Input id={g.ownPrices && k === 0 ? 'option-prices' : undefined} type="number" step="0.01" min="0" inputMode="decimal"
@@ -255,7 +279,7 @@ function OptionGroupsEditor({ groups, onChange, sets = [], onSaveSet }) {
               const title = window.prompt('Name this set so you can reuse it (e.g. Tumbler colors):', g.name)
               if (!title?.trim()) return
               const set = { id: crypto.randomUUID(), title: title.trim(), name: g.name.trim() || 'Option',
-                choices: g.choices.filter(c => c.label.trim()).map(c => ({ label: c.label.trim(), price: g.ownPrices ? 0 : Number(c.price) || 0 })) }
+                choices: g.choices.filter(c => c.label.trim()).map(c => ({ label: c.label.trim(), price: g.ownPrices ? 0 : Number(c.price) || 0, ...(c.image ? { image: c.image } : {}) })) }
               if (await onSaveSet(set)) setGroup(i, { set: set.id })
             }}>⭐ Save as reusable set</button>
           )}
@@ -273,7 +297,7 @@ function OptionGroupsEditor({ groups, onChange, sets = [], onSaveSet }) {
           <button key={label} type="button" onClick={() => onChange([...groups, make()])} style={styles.chip}>+ {label}</button>
         ))}
       </div>
-      <div style={{ ...ui.hint, marginTop: 6 }}>The first choice is selected by default. Choices cost the product’s price — unless you tick “Each choice has its own price” on one option (like Size), then type each choice’s price and the main price isn’t needed.</div>
+      <div style={{ ...ui.hint, marginTop: 6 }}>Tap 📷 next to a choice to give it a picture (a pattern, a color) — choices with pictures show as swatches, and tapping one shows its picture. The first choice is selected by default. Choices cost the product’s price — unless you tick “Each choice has its own price” on one option (like Size), then type each choice’s price and the main price isn’t needed.</div>
     </div>
   )
 }
@@ -512,7 +536,7 @@ function ProductModal({ product, seriesList, onClose, onSaved, flash, optionSets
       const named = priced.choices.filter(c => String(c.label).trim())
       if (!named.length || named.some(c => !(Number(c.price) > 0))) return missing('option-prices', `Give every ${priced.name || 'option'} choice a price`)
       base = Math.min(...named.map(c => Number(c.price)))
-      groups = groups.map(g => g !== priced ? g : { name: g.name, choices: g.choices.map(c => ({ label: c.label, price: round2(Number(c.price) - base) })) })
+      groups = groups.map(g => g !== priced ? g : { ...(g.set ? { set: g.set } : {}), name: g.name, choices: g.choices.map(c => ({ ...c, price: round2(Number(c.price) - base) })) })
     }
     if (!(base > 0)) return missing('product-price', `Add the ${p.sell_digital && !isDigital ? 'physical ' : ''}price (above), or tick “Each choice has its own price” on an option`)
     if (p.sell_digital && !isDigital && !(Number(p.digital_price) > 0)) return flash('Add the digital price', 'error')
@@ -806,7 +830,7 @@ function OptionSets({ sets, products, onSave, onPush }) {
   const setChoice = (k, patch) => setForm(f => ({ ...f, choices: f.choices.map((c, j) => j === k ? { ...c, ...patch } : c) }))
 
   const save = async () => {
-    const set = { ...form, title: form.title.trim(), name: form.name.trim(), choices: form.choices.map(c => ({ label: c.label.trim(), price: Number(c.price) || 0 })).filter(c => c.label) }
+    const set = { ...form, title: form.title.trim(), name: form.name.trim(), choices: form.choices.map(c => ({ label: c.label.trim(), price: Number(c.price) || 0, ...(c.image ? { image: c.image } : {}) })).filter(c => c.label) }
     if (!set.title || !set.name || !set.choices.length) return alert('Add a set name, what customers see, and at least one choice')
     const list = sets.some(x => x.id === set.id) ? sets.map(x => x.id === set.id ? set : x) : [...sets, set]
     if (await onSave(list, `“${set.title}” saved`)) { setForm(null); await onPush(set) }
@@ -823,8 +847,10 @@ function OptionSets({ sets, products, onSave, onPush }) {
         <Field label="Customers see"><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Color" /></Field>
       </div>
       <div style={ui.label}>Choices</div>
+      <div style={{ ...ui.hint, marginTop: -6 }}>Tap 📷 to add a picture (great for patterns) — products using this set get the pictures too.</div>
       {form.choices.map((c, k) => (
         <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <ChoiceImage image={c.image} label={c.label} onChange={image => setChoice(k, { image })} />
           <Input value={c.label} placeholder="Choice" onChange={e => setChoice(k, { label: e.target.value })} style={{ flex: 2, padding: '9px 10px', fontSize: 14 }} />
           <Input type="number" step="0.01" inputMode="decimal" value={c.price || ''} placeholder="+$0" title="Extra cost for this choice (optional)"
             onChange={e => setChoice(k, { price: e.target.value })} style={{ flex: 1, minWidth: 70, padding: '9px 10px', fontSize: 14 }} />
@@ -849,6 +875,9 @@ function OptionSets({ sets, products, onSave, onPush }) {
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700 }}>{x.title}</div>
             <div style={{ ...ui.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}: {x.choices.map(c => c.label).join(', ')}</div>
+            {x.choices.some(c => c.image) && (
+              <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>{x.choices.filter(c => c.image).slice(0, 8).map(c => <img key={c.label} src={c.image} alt={c.label} title={c.label} style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover' }} />)}</div>
+            )}
             <div style={ui.hint}>On {used(x.id)} product{used(x.id) === 1 ? '' : 's'}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -967,6 +996,8 @@ const styles = {
   toggle: { display: 'flex', background: 'var(--card2)', borderRadius: 50, padding: 4, gap: 4 },
   toggleBtn: { flex: 1, padding: '10px 12px', borderRadius: 50, border: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--mid)' },
   toggleOn: { background: '#fff', color: 'var(--dark)', boxShadow: '0 1px 6px rgba(0,0,0,0.08)' },
+  choiceImg: { width: 38, height: 38, borderRadius: 10, border: '1.5px dashed var(--border)', background: 'var(--card2) center / cover no-repeat', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, cursor: 'pointer' },
+  choiceImgX: { position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'var(--dark)', color: '#fff', fontSize: 12, lineHeight: '18px', padding: 0, cursor: 'pointer' },
   fileRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', marginBottom: 6, borderRadius: 12, border: '1px solid var(--border)', background: '#fff' },
   fileType: { flexShrink: 0, minWidth: 38, textAlign: 'center', padding: '4px 6px', borderRadius: 8, background: 'var(--card2)', color: 'var(--secondary)', fontSize: 10.5, fontWeight: 800 },
   fileBtn: { flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 12, color: 'var(--mid)' },
